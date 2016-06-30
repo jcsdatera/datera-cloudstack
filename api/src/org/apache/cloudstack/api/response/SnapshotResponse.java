@@ -82,6 +82,10 @@ public class SnapshotResponse extends BaseResponse implements ControlledEntityRe
     @Param(description = "valid types are hourly, daily, weekly, monthy, template, and none.")
     private String intervalType;
 
+    @SerializedName(ApiConstants.LOCATION_TYPE)
+    @Param(description = "valid location types are primary and archive.")
+    private String locationType;
+
     @SerializedName(ApiConstants.STATE)
     @Param(description = "the state of the snapshot. BackedUp means that snapshot is ready to be used; Creating - the snapshot is being allocated on the primary storage; BackingUp - the snapshot is being backed up on secondary storage")
     private Snapshot.State state;
@@ -164,6 +168,10 @@ public class SnapshotResponse extends BaseResponse implements ControlledEntityRe
 
     public void setIntervalType(String intervalType) {
         this.intervalType = intervalType;
+    }
+
+    public void setLocationType(String locationType) {
+        this.locationType = locationType;
     }
 
     public void setState(Snapshot.State state) {
