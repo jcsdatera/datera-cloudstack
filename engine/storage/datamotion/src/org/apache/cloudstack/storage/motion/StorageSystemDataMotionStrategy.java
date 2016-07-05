@@ -39,6 +39,7 @@ import com.cloud.storage.DataStoreRole;
 import com.cloud.storage.DiskOfferingVO;
 import com.cloud.storage.SnapshotVO;
 import com.cloud.storage.Storage.ImageFormat;
+import com.cloud.storage.Volume;
 import com.cloud.storage.VolumeDetailVO;
 import com.cloud.storage.VolumeVO;
 import com.cloud.storage.dao.DiskOfferingDao;
@@ -86,6 +87,7 @@ import org.apache.cloudstack.storage.command.ResignatureCommand;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
 import org.apache.cloudstack.storage.to.PrimaryDataStoreTO;
+import org.apache.cloudstack.storage.to.SnapshotObjectTO;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
@@ -445,6 +447,29 @@ public class StorageSystemDataMotionStrategy implements DataMotionStrategy {
                 throw new CloudRuntimeException(msg + ex.getMessage());
 
             } finally {
+
+                // detach and remove access after the volume is created
+                SnapshotObjectTO snapshotObjectTO = (SnapshotObjectTO) snapshotInfo.getTO();
+                DiskTO disk = new DiskTO(snapshotObjectTO, null, snapshotInfo.getPath(), Volume.Type.UNKNOWN);
+                DettachCommand cmd = new DettachCommand(disk, null);
+                StoragePoolVO storagePool = _storagePoolDao.findById(srcDataStore.getId());
+
+                cmd.setManaged(true);
+                cmd.setStorageHost(storagePool.getHostAddress());
+                cmd.setStoragePort(storagePool.getPort());
+                cmd.set_iScsiName(getProperty(snapshotInfo.getId(), DiskTO.IQN));
+
+                try {
+                    DettachAnswer dettachAnswer = (DettachAnswer) _agentMgr.send(hostVO.getId(), cmd);
+
+                    if (!dettachAnswer.getResult()) {
+                        throw new CloudRuntimeException("Error detaching volume:" + dettachAnswer.getDetails());
+                    }
+
+                } catch (Exception e) {
+                    LOGGER.warn("Error detaching volume for snapshot " + snapshotInfo.getId() + " Error: " + e.getMessage());
+                }
+
                 try {
                     _volumeService.revokeAccess(snapshotInfo, hostVO, srcDataStore);
                 }
