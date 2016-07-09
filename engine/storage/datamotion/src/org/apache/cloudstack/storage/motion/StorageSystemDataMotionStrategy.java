@@ -378,7 +378,7 @@ public class StorageSystemDataMotionStrategy implements DataMotionStrategy {
             destOnStore.processEvent(Event.CreateOnlyRequested);
         }
 
-        if (usingBackendSnapshot && !computeClusterSupportsResign) {
+        if (usingBackendSnapshot && !computeClusterSupportsResign && isResignatureNeeded(hostVO)) {
             String noSupportForResignErrMsg = "Unable to locate an applicable host with which to perform a resignature operation : Cluster ID = " + hostVO.getClusterId();
 
             LOGGER.warn(noSupportForResignErrMsg);
@@ -684,14 +684,26 @@ public class StorageSystemDataMotionStrategy implements DataMotionStrategy {
             volumeInfo.processEvent(Event.MigrationRequested);
             volumeInfo = _volumeDataFactory.getVolume(volumeInfo.getId(), volumeInfo.getDataStore());
 
-            copyCmdAnswer = performResignature(volumeInfo, hostVO);
+            if (isResignatureNeeded(hostVO)) {
+                copyCmdAnswer = performResignature(volumeInfo, hostVO);
 
-            if (copyCmdAnswer == null || !copyCmdAnswer.getResult()) {
-                if (copyCmdAnswer != null && !StringUtils.isEmpty(copyCmdAnswer.getDetails())) {
-                    throw new CloudRuntimeException(copyCmdAnswer.getDetails());
-                } else {
-                    throw new CloudRuntimeException("Unable to create a volume from a template");
+                if (copyCmdAnswer == null || !copyCmdAnswer.getResult()) {
+                    if (copyCmdAnswer != null && !StringUtils.isEmpty(copyCmdAnswer.getDetails())) {
+                        throw new CloudRuntimeException(copyCmdAnswer.getDetails());
+                    } else {
+                        throw new CloudRuntimeException("Unable to create a volume from a template");
+                    }
                 }
+            } else {
+                 /* Since resign returns a copyCmdAnswer, create a fake one here */
+
+                VolumeObjectTO newVolume = new VolumeObjectTO();
+
+                newVolume.setSize(volumeInfo.getSize());
+                newVolume.setPath(volumeInfo.getPath());
+                newVolume.setFormat(volumeInfo.getFormat());
+
+                copyCmdAnswer = new CopyCmdAnswer(newVolume);
             }
         } catch (InterruptedException | ExecutionException ex) {
             volumeInfo.getDataStore().getDriver().deleteAsync(volumeInfo.getDataStore(), volumeInfo, null);
@@ -766,7 +778,20 @@ public class StorageSystemDataMotionStrategy implements DataMotionStrategy {
             volumeInfo = _volumeDataFactory.getVolume(volumeInfo.getId(), volumeInfo.getDataStore());
 
             if (useCloning) {
-                copyCmdAnswer = performResignature(volumeInfo, hostVO);
+                if (isResignatureNeeded(hostVO)) {
+                    copyCmdAnswer = performResignature(volumeInfo, hostVO);
+                } else {
+                    //No resign needed, just create a fake copyCmdAnswer with volume details
+
+                    VolumeObjectTO newVolume = new VolumeObjectTO();
+                    VolumeInfo clonedVolume = result.getVolume();
+
+                    newVolume.setSize(clonedVolume.getSize());
+                    newVolume.setPath(clonedVolume.getPath());
+                    newVolume.setFormat(clonedVolume.getFormat());
+
+                    copyCmdAnswer = new CopyCmdAnswer(newVolume);
+                }
             }
             else {
                 // asking for a XenServer host here so we don't always prefer to use XenServer hosts that support resigning
@@ -811,20 +836,36 @@ public class StorageSystemDataMotionStrategy implements DataMotionStrategy {
 
         try {
             snapshotInfo.getDataStore().getDriver().createAsync(snapshotInfo.getDataStore(), snapshotInfo, null);
-        }
-        finally {
+        } finally {
             _snapshotDetailsDao.remove(snapshotDetails.getId());
         }
 
-        CopyCmdAnswer copyCmdAnswer = performResignature(snapshotInfo, hostVO, keepGrantedAccess);
+        if (isResignatureNeeded(hostVO)) {
+            CopyCmdAnswer copyCmdAnswer = performResignature(snapshotInfo, hostVO, keepGrantedAccess);
 
-        if (copyCmdAnswer == null || !copyCmdAnswer.getResult()) {
-            if (copyCmdAnswer != null && !StringUtils.isEmpty(copyCmdAnswer.getDetails())) {
-                throw new CloudRuntimeException(copyCmdAnswer.getDetails());
-            } else {
-                throw new CloudRuntimeException("Unable to create volume from snapshot");
+            if (copyCmdAnswer == null || !copyCmdAnswer.getResult()) {
+                if (copyCmdAnswer != null && !StringUtils.isEmpty(copyCmdAnswer.getDetails())) {
+                    throw new CloudRuntimeException(copyCmdAnswer.getDetails());
+                } else {
+                    throw new CloudRuntimeException("Unable to create volume from snapshot");
+                }
+            }
+        } else {
+            // No resignature is needed just grant acccess to the volume so we can copy the VHD
+            long storagePoolId = snapshotInfo.getDataStore().getId();
+            DataStore dataStore = dataStoreMgr.getDataStore(storagePoolId, DataStoreRole.Primary);
+            _volumeService.grantAccess(snapshotInfo, hostVO, dataStore);
+        }
+    }
+
+    private boolean isResignatureNeeded(HostVO hostVO) {
+        if (hostVO.getHypervisorType().equals(HypervisorType.XenServer)) {
+            String managedSrType = _configDao.getValue(Config.XenServerManagedStorageSrType.toString());
+            if (managedSrType.equalsIgnoreCase("vdilun")) {
+                return false;
             }
         }
+        return true;
     }
 
     /**

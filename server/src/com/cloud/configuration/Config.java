@@ -1128,6 +1128,14 @@ public enum Config {
             "false",
             "Enable/Disable XenServer hot fix",
             null),
+    XenServerManagedStorageSrType(
+            "Advanced",
+            ManagementServer.class,
+            String.class,
+            "xenserver.managedstorage.srtype",
+            "lvmoiscsi",
+            "The type of SR to use when using managed storage for VDI-per-LUN",
+            "lvmoiscsi,vdilun"),
 
     // VMware
     VmwareUseNexusVSwitch(

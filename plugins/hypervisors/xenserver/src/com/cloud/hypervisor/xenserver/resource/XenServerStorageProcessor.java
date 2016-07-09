@@ -420,6 +420,7 @@ public class XenServerStorageProcessor implements StorageProcessor {
     public Answer dettachVolume(final DettachCommand cmd) {
         final DiskTO disk = cmd.getDisk();
         final DataTO data = disk.getData();
+        final PrimaryDataStoreTO store = (PrimaryDataStoreTO) data.getDataStore();
 
         try {
             final Connection conn = hypervisorResource.getConnection();
@@ -464,11 +465,15 @@ public class XenServerStorageProcessor implements StorageProcessor {
                 // Update the VDI's label to be "detached"
                 vdi.setNameLabel(conn, "detached");
 
-                hypervisorResource.umount(conn, vdi);
-            }
+               hypervisorResource.umount(conn, vdi);
+
+           }
 
             if (cmd.isManaged()) {
-                hypervisorResource.handleSrAndVdiDetach(cmd.get_iScsiName(), conn);
+                final Map<String, String> details = store.getDetails();
+                String storageHost = store.getHost(); //XXX: Is this valid?
+
+                hypervisorResource.handleManagedSrAndVdiDetach(cmd.get_iScsiName(), storageHost, conn);
             }
 
             return new DettachAnswer(disk);
@@ -487,11 +492,14 @@ public class XenServerStorageProcessor implements StorageProcessor {
         return poolsr;
     }
 
-    protected VDI createVdi(final Connection conn, final String vdiName, final SR sr, final long size) throws BadServerResponse, XenAPIException, XmlRpcException {
+    protected VDI createVdi(final Connection conn, final String vdiName, final SR sr, final long size, Map<String, String> smConfig) throws BadServerResponse, XenAPIException, XmlRpcException {
         final VDI.Record vdir = new VDI.Record();
         vdir.nameLabel = vdiName;
         vdir.SR = sr;
         vdir.type = Types.VdiType.USER;
+        if (smConfig != null) {
+            vdir.smConfig = smConfig;
+        }
 
         vdir.virtualSize = size;
         final VDI vdi = VDI.create(conn, vdir);
@@ -734,7 +742,7 @@ public class XenServerStorageProcessor implements StorageProcessor {
     }
 
     protected boolean IsISCSI(final String type) {
-        return SRType.LVMOHBA.equals(type) || SRType.LVMOISCSI.equals(type) || SRType.LVM.equals(type);
+        return SRType.LVMOHBA.equals(type) || SRType.LVMOISCSI.equals(type) || SRType.LVM.equals(type) || SRType.VDILUN.equals(type);
     }
 
     private String copy_vhd_from_secondarystorage(final Connection conn, final String mountpoint, final String sruuid, final int wait) {

@@ -212,6 +212,7 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
                 String managedStoragePoolRootVolumeSize = null;
                 String chapInitiatorUsername = null;
                 String chapInitiatorSecret = null;
+                VDI destVdi = null;
 
                 final PrimaryDataStoreTO destStore = (PrimaryDataStoreTO) destData.getDataStore();
 
@@ -232,6 +233,7 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
                 }
 
                 if (managed) {
+
                     details = new HashMap<String, String>();
 
                     details.put(DiskTO.STORAGE_HOST, storageHost);
@@ -241,6 +243,19 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
                     details.put(DiskTO.CHAP_INITIATOR_SECRET, chapInitiatorSecret);
 
                     destSr = hypervisorResource.prepareManagedSr(conn, details);
+                    if (CitrixResourceBase.SRType.VDILUN.equals(hypervisorResource.getManagedStorageSrType())) {
+                        // we create a destination VDI as the SR is just a placeholder for LUNs
+                        Map<String, String> smConfig = new HashMap<>();
+                        //TODO: Auth
+                        smConfig.put("targetIQN", hypervisorResource.getTargetIqn(managedStoragePoolName));
+                        destVdi = createVdi(conn, managedStoragePoolRootVolumeName, destSr,
+                                Long.parseLong(managedStoragePoolRootVolumeSize), smConfig);
+
+                        removeSrAfterCopy = false;
+                    }
+
+                    task = srcVdi.copyAsync(conn, destSr, null, destVdi);
+
                 } else {
                     final String srName = destStore.getUuid();
                     final Set<SR> srs = SR.getByNameLabel(conn, srName);
@@ -254,13 +269,14 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
                     } else {
                         destSr = srs.iterator().next();
                     }
+                    task = srcVdi.copyAsync(conn, destSr, null, null);
                 }
 
-                task = srcVdi.copyAsync(conn, destSr, null, null);
 
                 // poll every 1 seconds ,
                 hypervisorResource.waitForTask(conn, task, 1000, wait * 1000);
                 hypervisorResource.checkForSuccess(conn, task);
+
 
                 final VDI tmplVdi = Types.toVDI(task, conn);
 
@@ -271,6 +287,12 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
                     uuidToReturn = tmplVdi.getUuid(conn);
 
                     tmplVdi.setNameLabel(conn, managedStoragePoolRootVolumeName);
+
+                    if(destVdi != null) {
+                        //in case VDILUN SR
+                        destVdi.forget(conn);
+                    }
+
                 } else {
                     final VDI snapshotVdi = tmplVdi.snapshot(conn, new HashMap<String, String>());
 
@@ -321,7 +343,7 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
             }
 
             if (removeSrAfterCopy && destSr != null) {
-                hypervisorResource.removeSR(conn, destSr);
+                    hypervisorResource.removeSR(conn, destSr);
             }
         }
 
@@ -430,6 +452,7 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
         final Map<String, String> options = cmd.getOptions();
         // By default assume failure
         String details = null;
+        VDI srcVdi = null;
         String snapshotBackupUuid = null;
         boolean fullbackup = Boolean.parseBoolean(options.get("fullSnapshot"));
         Long physicalSize = null;
@@ -445,15 +468,31 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
                 final String storageHost = srcDetails.get(DiskTO.STORAGE_HOST);
                 final String chapInitiatorUsername = srcDetails.get(DiskTO.CHAP_INITIATOR_USERNAME);
                 final String chapInitiatorSecret = srcDetails.get(DiskTO.CHAP_INITIATOR_SECRET);
-                final String srType = CitrixResourceBase.SRType.LVMOISCSI.toString();
 
-                primaryStorageSR = hypervisorResource.getIscsiSR(conn, iScsiName, storageHost, iScsiName,
+                if (CitrixResourceBase.SRType.VDILUN.equals(hypervisorResource.getManagedStorageSrType())){
+
+                    String targetIqn = hypervisorResource.getTargetIqn(iScsiName);
+                    primaryStorageSR = hypervisorResource.getVdiLunSr(conn, storageHost);
+                    srcVdi = hypervisorResource.getVDIbyLocationandSR(conn, targetIqn, primaryStorageSR);
+
+                    if (srcVdi == null) {
+                        String tempUuid = hypervisorResource.generateUuid();
+                        srcVdi = hypervisorResource.introduceVDI(primaryStorageSR, snapshotTO.getName(), snapshotTO.getPhysicalSize(),
+                                tempUuid, targetIqn);
+                    }
+
+                } else {
+
+                    final String srType = CitrixResourceBase.SRType.LVMOISCSI.toString();
+                    primaryStorageSR = hypervisorResource.getIscsiSR(conn, iScsiName, storageHost, iScsiName,
                         chapInitiatorUsername, chapInitiatorSecret, false, srType, true);
+                    srcVdi = primaryStorageSR.getVDIs(conn).iterator().next();
+                }
 
-                final VDI srcVdi = primaryStorageSR.getVDIs(conn).iterator().next();
                 if (srcVdi == null) {
                     throw new InternalErrorException("Could not Find a VDI on the SR: " + primaryStorageSR.getNameLabel(conn));
                 }
+
                 snapshotUuid = srcVdi.getUuid(conn);
 
             } else {
@@ -576,6 +615,11 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
             } else {
                 newSnapshot.setParentSnapshotPath(prevBackupUuid);
             }
+
+            if (CitrixResourceBase.SRType.VDILUN.equals(hypervisorResource.getManagedStorageSrType()) && srcVdi != null) {
+               srcVdi.forget(conn);
+            }
+
             return new CopyCmdAnswer(newSnapshot);
         } catch (final Types.XenAPIException e) {
             details = "BackupSnapshot Failed due to " + e.toString();
@@ -721,6 +765,7 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
         VDI destVdi = null;
         try {
             SR primaryStorageSR;
+            Map<String, String> smConfig = null;
 
             if (pool.isManaged()) {
                 Map<String,String> destDetails = cmd.getOptions2();
@@ -729,10 +774,16 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
                 final String storageHost = destDetails.get(DiskTO.STORAGE_HOST);
                 final String chapInitiatorUsername = destDetails.get(DiskTO.CHAP_INITIATOR_USERNAME);
                 final String chapInitiatorSecret = destDetails.get(DiskTO.CHAP_INITIATOR_SECRET);
-                final String srType = CitrixResourceBase.SRType.LVMOISCSI.toString();
+                final String srType = hypervisorResource.getManagedStorageSrType();
 
-                primaryStorageSR = hypervisorResource.getIscsiSR(conn, iScsiName, storageHost, iScsiName,
-                        chapInitiatorUsername, chapInitiatorSecret, false, srType, true);
+                if (CitrixResourceBase.SRType.VDILUN.equals(srType)) {
+                    primaryStorageSR = hypervisorResource.getVdiLunSr(conn, storageHost);
+                    smConfig = new HashMap<>();
+                    smConfig.put("targetIQN", hypervisorResource.getTargetIqn(iScsiName));
+                } else {
+                    primaryStorageSR = hypervisorResource.getIscsiSR(conn, iScsiName, storageHost, iScsiName,
+                            chapInitiatorUsername, chapInitiatorSecret, false, srType, true);
+                }
 
             } else {
                 primaryStorageSR = hypervisorResource.getSRByNameLabelandHost(conn, primaryStorageNameLabel);
@@ -744,7 +795,7 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
             }
 
             final String nameLabel = "cloud-" + UUID.randomUUID().toString();
-            destVdi = createVdi(conn, nameLabel, primaryStorageSR, volume.getSize());
+            destVdi = createVdi(conn, nameLabel, primaryStorageSR, volume.getSize(), smConfig);
             volumeUUID = destVdi.getUuid(conn);
             final String snapshotInstallPath = snapshot.getPath();
             final int index = snapshotInstallPath.lastIndexOf(File.separator);
@@ -1003,7 +1054,7 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
 
             final long templateVirtualSize = snapshotChains.get(0).getVirtualSize(conn);
 
-            destVdi = createVdi(conn, nameLabel, destSr, templateVirtualSize);
+            destVdi = createVdi(conn, nameLabel, destSr, templateVirtualSize, null);
 
             final String destVdiUuid = destVdi.getUuid(conn);
 
@@ -1111,11 +1162,27 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
             final String storageHost = srcDetails.get(DiskTO.STORAGE_HOST);
             final String chapInitiatorUsername = srcDetails.get(DiskTO.CHAP_INITIATOR_USERNAME);
             final String chapInitiatorSecret = srcDetails.get(DiskTO.CHAP_INITIATOR_SECRET);
-            String srType = null;
+            VDI srcVdi = null;
 
-            srType = CitrixResourceBase.SRType.LVMOISCSI.toString();
+            if (CitrixResourceBase.SRType.VDILUN.equals(hypervisorResource.getManagedStorageSrType())){
 
-            srcSr = hypervisorResource.getIscsiSR(conn, iScsiName, storageHost, iScsiName, chapInitiatorUsername, chapInitiatorSecret, false, srType, true);
+                String targetIqn = hypervisorResource.getTargetIqn(iScsiName);
+                SR sr = hypervisorResource.getVdiLunSr(conn, storageHost);
+                srcVdi = hypervisorResource.getVDIbyLocationandSR(conn, targetIqn, sr);
+
+                if (srcVdi == null) {
+                    String tempUuid = hypervisorResource.generateUuid();
+                    srcVdi = hypervisorResource.introduceVDI(sr, snapshotObjTO.getName(), snapshotObjTO.getPhysicalSize(),
+                            tempUuid, targetIqn);
+                }
+
+            } else {
+
+                String srType = CitrixResourceBase.SRType.LVMOISCSI.toString();
+                srcSr = hypervisorResource.getIscsiSR(conn, iScsiName, storageHost, iScsiName, chapInitiatorUsername, chapInitiatorSecret, false, srType, true);
+                srcVdi = srcSr.getVDIs(conn).iterator().next();
+            }
+
 
             final String destNfsPath = destUri.getHost() + ":" + destUri.getPath();
             final String localDir = "/var/cloud_mount/" + UUID.nameUUIDFromBytes(destNfsPath.getBytes());
@@ -1126,7 +1193,6 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
             destSr = createFileSR(conn, localDir + "/" + destDir);
 
             // there should only be one VDI in this SR
-            final VDI srcVdi = srcSr.getVDIs(conn).iterator().next();
 
             destVdi = srcVdi.copy(conn, destSr);
 
@@ -1164,6 +1230,10 @@ public class Xenserver625StorageProcessor extends XenServerStorageProcessor {
             newTemplate.setName(templateUuid);
 
             result = true;
+
+            if (CitrixResourceBase.SRType.VDILUN.equals(hypervisorResource.getManagedStorageSrType())){
+                srcVdi.forget(conn);
+            }
 
             return new CopyCmdAnswer(newTemplate);
             // } catch (Exception ex) {

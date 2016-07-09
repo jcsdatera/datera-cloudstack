@@ -346,6 +346,7 @@ public class XcpServerDiscoverer extends DiscovererBase implements Discoverer, L
                 params.put(Config.XenServerMaxNics.toString().toLowerCase(), _configDao.getValue(Config.XenServerMaxNics.toString()));
                 params.put(Config.XenServerHeartBeatTimeout.toString().toLowerCase(), _configDao.getValue(Config.XenServerHeartBeatTimeout.toString()));
                 params.put(Config.XenServerHeartBeatInterval.toString().toLowerCase(), _configDao.getValue(Config.XenServerHeartBeatInterval.toString()));
+                params.put(Config.XenServerManagedStorageSrType.toString().toLowerCase(), _configDao.getValue(Config.XenServerManagedStorageSrType.toString()));
                 params.put(Config.InstanceName.toString().toLowerCase(), _instance);
                 details.put(Config.InstanceName.toString().toLowerCase(), _instance);
                 try {
