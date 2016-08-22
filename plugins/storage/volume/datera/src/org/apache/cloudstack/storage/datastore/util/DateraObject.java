@@ -127,6 +127,7 @@ public class DateraObject {
     public static class Volume {
 
         private String name;
+        private String path;
         private Integer size;
 
         @SerializedName("replica_count")
@@ -134,6 +135,9 @@ public class DateraObject {
 
         @SerializedName("performance_policy")
         private PerformancePolicy performancePolicy;
+
+        @SerializedName("op_state")
+        private String opState;
 
         public Volume(int size, int totalIops, int replicaCount) {
             this.name = DEFAULT_VOLUME_NAME;
@@ -143,7 +147,7 @@ public class DateraObject {
         }
 
         public Volume(Integer newSize) {
-
+            this.size = newSize;
         }
 
         public PerformancePolicy getPerformancePolicy() {
@@ -152,6 +156,14 @@ public class DateraObject {
 
         public int getSize() {
             return size;
+        }
+
+        public String getPath() {
+            return path;
+        }
+
+        public String getOpState() {
+            return opState;
         }
     }
 
@@ -238,6 +250,15 @@ public class DateraObject {
             return storageInstance.getSize();
         }
 
+        public String getVolumePath(){
+            StorageInstance storageInstance = storageInstances.get(DEFAULT_STORAGE_NAME);
+            return storageInstance.getVolume().getPath();
+        }
+
+        public String getVolumeOpState(){
+            StorageInstance storageInstance = storageInstances.get(DEFAULT_STORAGE_NAME);
+            return storageInstance.getVolume().getOpState();
+        }
     }
 
     public static class Initiator {

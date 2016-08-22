@@ -17,23 +17,44 @@
 
 package org.apache.cloudstack.storage.datastore.driver;
 
-import java.io.UnsupportedEncodingException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import javax.inject.Inject;
-
+import com.cloud.agent.api.Answer;
+import com.cloud.agent.api.to.DataObjectType;
+import com.cloud.agent.api.to.DataStoreTO;
+import com.cloud.agent.api.to.DataTO;
+import com.cloud.agent.api.to.DiskTO;
+import com.cloud.dc.ClusterDetailsDao;
+import com.cloud.dc.ClusterDetailsVO;
+import com.cloud.dc.ClusterVO;
+import com.cloud.dc.dao.ClusterDao;
+import com.cloud.host.Host;
+import com.cloud.host.HostVO;
+import com.cloud.host.dao.HostDao;
+import com.cloud.storage.ResizeVolumePayload;
+import com.cloud.storage.SnapshotVO;
+import com.cloud.storage.Storage.StoragePoolType;
+import com.cloud.storage.StoragePool;
+import com.cloud.storage.Volume;
+import com.cloud.storage.VolumeDetailVO;
+import com.cloud.storage.VolumeVO;
+import com.cloud.storage.dao.SnapshotDao;
+import com.cloud.storage.dao.SnapshotDetailsDao;
+import com.cloud.storage.dao.SnapshotDetailsVO;
+import com.cloud.storage.dao.VolumeDao;
+import com.cloud.storage.dao.VolumeDetailsDao;
+import com.cloud.utils.StringUtils;
+import com.cloud.utils.db.GlobalLock;
+import com.cloud.utils.exception.CloudRuntimeException;
 import com.google.common.base.Preconditions;
 import com.google.common.primitives.Ints;
 import org.apache.cloudstack.engine.subsystem.api.storage.ChapInfo;
 import org.apache.cloudstack.engine.subsystem.api.storage.CopyCommandResult;
 import org.apache.cloudstack.engine.subsystem.api.storage.CreateCmdResult;
-import org.apache.cloudstack.engine.subsystem.api.storage.DataStoreCapabilities;
 import org.apache.cloudstack.engine.subsystem.api.storage.DataObject;
 import org.apache.cloudstack.engine.subsystem.api.storage.DataStore;
+import org.apache.cloudstack.engine.subsystem.api.storage.DataStoreCapabilities;
 import org.apache.cloudstack.engine.subsystem.api.storage.PrimaryDataStoreDriver;
 import org.apache.cloudstack.engine.subsystem.api.storage.SnapshotInfo;
+import org.apache.cloudstack.engine.subsystem.api.storage.VolumeDataFactory;
 import org.apache.cloudstack.engine.subsystem.api.storage.VolumeInfo;
 import org.apache.cloudstack.framework.async.AsyncCompletionCallback;
 import org.apache.cloudstack.storage.command.CommandResult;
@@ -47,40 +68,16 @@ import org.apache.cloudstack.storage.datastore.util.DateraUtil;
 import org.apache.cloudstack.storage.to.SnapshotObjectTO;
 import org.apache.log4j.Logger;
 
-import com.cloud.agent.api.Answer;
-import com.cloud.agent.api.to.DataObjectType;
-import com.cloud.agent.api.to.DataStoreTO;
-import com.cloud.agent.api.to.DataTO;
-import com.cloud.agent.api.to.DiskTO;
-import com.cloud.dc.ClusterVO;
-import com.cloud.dc.ClusterDetailsVO;
-import com.cloud.dc.ClusterDetailsDao;
-import com.cloud.dc.dao.ClusterDao;
-import com.cloud.host.Host;
-import com.cloud.host.HostVO;
-import com.cloud.host.dao.HostDao;
-import com.cloud.storage.Storage.StoragePoolType;
-import com.cloud.storage.ResizeVolumePayload;
-import com.cloud.storage.StoragePool;
-import com.cloud.storage.Volume;
-import com.cloud.storage.VolumeDetailVO;
-import com.cloud.storage.VolumeVO;
-import com.cloud.storage.SnapshotVO;
-import com.cloud.storage.dao.SnapshotDao;
-import com.cloud.storage.dao.SnapshotDetailsDao;
-import com.cloud.storage.dao.SnapshotDetailsVO;
-import com.cloud.storage.dao.VolumeDao;
-import com.cloud.storage.dao.VolumeDetailsDao;
-import com.cloud.utils.db.GlobalLock;
-import com.cloud.utils.exception.CloudRuntimeException;
+import javax.inject.Inject;
+import java.io.UnsupportedEncodingException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     private static final Logger s_logger = Logger.getLogger(DateraPrimaryDataStoreDriver.class);
     private static final int s_lockTimeInSeconds = 300;
     private static final int s_lowestHypervisorSnapshotReserve = 10;
-    private static final String INITIATOR_GROUP_PREFIX = "CSInitiatorGroup-";
-    private static final String INITIATOR_PREFIX = "CSInitiator-";
-    private static final String APPINSTANCE_PREFIX = "CSAppInstance-";
 
     @Inject private ClusterDao _clusterDao;
     @Inject private ClusterDetailsDao _clusterDetailsDao;
@@ -91,6 +88,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     @Inject private StoragePoolDetailsDao _storagePoolDetailsDao;
     @Inject private VolumeDao _volumeDao;
     @Inject private VolumeDetailsDao _volumeDetailsDao;
+    @Inject private VolumeDataFactory _volumeDataFactory;
 
     @Override
     public Map<String, String> getCapabilities() {
@@ -168,7 +166,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
             // We don't have the initiator group, create one
             if (initiatorGroupName == null) {
-                initiatorGroupName = INITIATOR_GROUP_PREFIX + cluster.getUuid();
+                initiatorGroupName = DateraUtil.INITIATOR_GROUP_PREFIX + "-" + cluster.getUuid();
 
                 initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
 
@@ -191,7 +189,7 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             //initiator not found, create it
             if (initiator == null) {
 
-                String initiatorName = INITIATOR_PREFIX + host.getUuid();
+                String initiatorName = DateraUtil.INITIATOR_PREFIX + "-" + host.getUuid();
                 initiator = DateraUtil.createInitiator(conn, initiatorName, iqn);
 
             }
@@ -203,10 +201,15 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                 DateraUtil.addInitiatorToGroup(conn, initiator.getPath(), initiatorGroupName);
             }
 
+
             //assgin the initiatorgroup to appInstance
             if (!isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance)) {
                 DateraUtil.assignGroupToAppInstance(conn, initiatorGroupName, appInstanceName);
-                Thread.sleep(3000);
+                int retries = DateraUtil.DEFAULT_RETRIES;
+                while (!isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance) && retries > 0) {
+                    Thread.sleep(DateraUtil.POLL_TIMEOUT_MS);
+                    retries--;
+                }
             }
 
             return true;
@@ -284,7 +287,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     }
 
     private String getAppInstanceName(DataObject dataObject) {
-        return APPINSTANCE_PREFIX + dataObject.getUuid();
+        String[] names = {DateraUtil.APPINSTANCE_PREFIX, dataObject.getType().toString(), dataObject.getUuid()};
+        return StringUtils.join("-", names);
     }
 
     private long getDefaultMinIops(long storagePoolId) {
@@ -339,8 +343,9 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     DateraObject.DateraConnection conn = DateraUtil.getDateraConnection(storagePool.getId(), _storagePoolDetailsDao);
                     try {
 
-                        String appInstanceName = getAppInstanceName((DataObject) volume);
+                        String appInstanceName = getAppInstanceName(_volumeDataFactory.getVolume(volume.getId()));
                         DateraObject.AppInstance appInstance = DateraUtil.getAppInstance(conn, appInstanceName);
+
                         if (appInstance != null) {
                             usedSpace += DateraUtil.gbToBytes(appInstance.getSize());
                         }

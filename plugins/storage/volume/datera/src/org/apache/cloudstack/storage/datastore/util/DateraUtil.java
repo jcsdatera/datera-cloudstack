@@ -50,6 +50,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.StringTokenizer;
 
 public class DateraUtil {
@@ -83,6 +84,19 @@ public class DateraUtil {
     public static final String STORAGE_POOL_ID = "DateraStoragePoolId";
     public static final String VOLUME_SIZE = "DateraVolumeSize";
     public static final String VOLUME_ID = "DateraVolumeId";
+
+    public static final int MAX_IOPS = 30000; // max IOPS that can be assigned to a volume
+
+    public static final String INITIATOR_GROUP_PREFIX = "Cloudstack-InitiatorGroup";
+    public static final String INITIATOR_PREFIX = "Cloudstack-Initiator";
+    public static final String APPINSTANCE_PREFIX = "Cloudstack";
+
+    public static final int MIN_NUM_REPLICAS = 1;
+    public static final int MAX_NUM_REPLICAS = 5;
+
+    public static final int POLL_TIMEOUT_MS = 3000;
+    public static final String STATE_AVAILABLE = "available";
+    public static final int DEFAULT_RETRIES = 3;
 
     private static Gson gson = new GsonBuilder().create();
 
@@ -144,10 +158,31 @@ public class DateraUtil {
         }
     }
 
-    public static void updateAppInstanceIops(DateraObject.DateraConnection conn, String appInstance, int totalIops) throws UnsupportedEncodingException, DateraObject.DateraError {
+    public static DateraObject.PerformancePolicy getAppInstancePerformancePolicy(DateraObject.DateraConnection conn, String appInstanceName) throws DateraObject.DateraError {
 
-        HttpPut url = new HttpPut(generateApiUrl(
-                "app_instances", appInstance,
+        HttpGet url = new HttpGet(generateApiUrl(
+                "app_instances", appInstanceName,
+                "storage_instances", DateraObject.DEFAULT_STORAGE_NAME,
+                "volumes", DateraObject.DEFAULT_VOLUME_NAME,
+                "performance_policy"));
+
+        try {
+            String response = executeApiRequest(conn, url);
+            return gson.fromJson(response, DateraObject.PerformancePolicy.class);
+        } catch (DateraObject.DateraError dateraError) {
+            if (DateraObject.DateraErrorTypes.NotFoundError.equals(dateraError)){
+                return null;
+            } else {
+                throw dateraError;
+            }
+        }
+
+    }
+
+    public static DateraObject.PerformancePolicy createAppInstancePerformancePolicy(DateraObject.DateraConnection conn, String appInstanceName, int totalIops) throws UnsupportedEncodingException, DateraObject.DateraError {
+
+        HttpPost url = new HttpPost(generateApiUrl(
+                "app_instances", appInstanceName,
                 "storage_instances", DateraObject.DEFAULT_STORAGE_NAME,
                 "volumes", DateraObject.DEFAULT_VOLUME_NAME,
                 "performance_policy"));
@@ -155,8 +190,29 @@ public class DateraUtil {
         DateraObject.PerformancePolicy performancePolicy = new DateraObject.PerformancePolicy(totalIops);
 
         url.setEntity(new StringEntity(gson.toJson(performancePolicy)));
-        executeApiRequest(conn, url);
 
+        String response = executeApiRequest(conn, url);
+
+        return gson.fromJson(response, DateraObject.PerformancePolicy.class);
+    }
+
+    public static void updateAppInstanceIops(DateraObject.DateraConnection conn, String appInstance, int totalIops) throws UnsupportedEncodingException, DateraObject.DateraError {
+
+        if (getAppInstancePerformancePolicy(conn, appInstance) == null) {
+            createAppInstancePerformancePolicy(conn, appInstance, totalIops);
+        } else {
+
+            HttpPut url = new HttpPut(generateApiUrl(
+                    "app_instances", appInstance,
+                    "storage_instances", DateraObject.DEFAULT_STORAGE_NAME,
+                    "volumes", DateraObject.DEFAULT_VOLUME_NAME,
+                    "performance_policy"));
+
+            DateraObject.PerformancePolicy performancePolicy = new DateraObject.PerformancePolicy(totalIops);
+
+            url.setEntity(new StringEntity(gson.toJson(performancePolicy)));
+            executeApiRequest(conn, url);
+        }
     }
 
     public static void updateAppInstanceSize(DateraObject.DateraConnection conn, String appInstanceName, int newSize) throws UnsupportedEncodingException, DateraObject.DateraError {
@@ -185,8 +241,6 @@ public class DateraUtil {
         }
     }
 
-
-
     private static DateraObject.AppInstance createAppInstance(DateraObject.DateraConnection conn, String name, StringEntity appInstanceEntity) throws DateraObject.DateraError {
 
         HttpPost createAppInstance = new HttpPost(generateApiUrl("app_instances"));
@@ -197,9 +251,9 @@ public class DateraUtil {
         executeApiRequest(conn, createAppInstance);
 
         //create is async, do a get to fetch the IQN
-        response = executeApiRequest(conn, getAppInstance);
+        executeApiRequest(conn, getAppInstance);
 
-        return gson.fromJson(response, DateraObject.AppInstance.class);
+        return pollAppInstanceAvailable(conn, name);
     }
 
     public static DateraObject.AppInstance createAppInstance(DateraObject.DateraConnection conn, String name, int size, int totalIops, int replicaCount) throws UnsupportedEncodingException, DateraObject.DateraError {
@@ -210,16 +264,19 @@ public class DateraUtil {
         return createAppInstance(conn, name, appInstanceEntity);
     }
 
-    public static DateraObject.AppInstance cloneAppInstance(DateraObject.DateraConnection conn, String name, String srcCloneName) throws UnsupportedEncodingException, DateraObject.DateraError {
+    public static DateraObject.AppInstance pollAppInstanceAvailable(DateraObject.DateraConnection conn, String appInstanceName) throws DateraObject.DateraError {
 
-        DateraObject.AppInstance appInstanceObj = new DateraObject.AppInstance(name, srcCloneName);
-
-        StringEntity appInstanceEntity = new StringEntity(gson.toJson(appInstanceObj));
-        DateraObject.AppInstance appInstance = createAppInstance(conn, name, appInstanceEntity);
-
-        //bring it online
-        updateAppInstanceAdminState(conn, name, DateraObject.AppState.ONLINE);
-
+        int retries = DateraUtil.DEFAULT_RETRIES;
+        DateraObject.AppInstance appInstance = null;
+        do {
+            appInstance = getAppInstance(conn, appInstanceName);
+            try {
+                Thread.sleep(DateraUtil.POLL_TIMEOUT_MS);
+            } catch (InterruptedException e) {
+                return null;
+            }
+            retries--;
+        } while ((appInstance != null && !Objects.equals(appInstance.getVolumeOpState(), DateraUtil.STATE_AVAILABLE)) && retries>0);
         return appInstance;
     }
 
@@ -308,7 +365,7 @@ public class DateraUtil {
         updateInitiatorGroup(conn, initiatorPath, groupName, DateraObject.DateraOperation.ADD);
     }
 
-    public void removeInitiatorFromGroup(DateraObject.DateraConnection conn, String initiatorPath, String groupName) throws DateraObject.DateraError, UnsupportedEncodingException {
+    public static void removeInitiatorFromGroup(DateraObject.DateraConnection conn, String initiatorPath, String groupName) throws DateraObject.DateraError, UnsupportedEncodingException {
         updateInitiatorGroup(conn, initiatorPath, groupName, DateraObject.DateraOperation.REMOVE);
     }
 
@@ -644,11 +701,29 @@ public class DateraUtil {
     }
 
     public static String getInitiatorGroupKey(long storagePoolId) {
-        return "DateraInitiatorGroup-" + storagePoolId;
+        return INITIATOR_GROUP_PREFIX + storagePoolId;
+    }
+
+    /**
+     * Checks wether a host initiator is present in an initiator group
+     *
+     * @param initiator    Host initiator to check
+     * @param initiatorGroup the initiator group
+     * @return true if host initiator is in the group, false otherwise
+     */
+    public static boolean isInitiatorPresentInGroup(DateraObject.Initiator initiator, DateraObject.InitiatorGroup initiatorGroup) {
+
+        for (String memberPath : initiatorGroup.getMembers() ) {
+            if (memberPath.equals(initiator.getPath())) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static int bytesToGb(long volumeSizeBytes) {
-        return (int) (volumeSizeBytes/(1024*1024*1024) + 1);
+        return (int) Math.ceil(volumeSizeBytes/1073741824.0);
     }
 
     public static long gbToBytes(int volumeSizeGb) {
@@ -694,6 +769,4 @@ public class DateraUtil {
 
         return tokens[1].trim();
     }
-
-
 }
