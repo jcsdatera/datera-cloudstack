@@ -37,14 +37,7 @@ from marvin.lib.common import get_domain, get_template, get_zone, list_clusters,
 # utils - utility classes for common cleanup, external library wrappers, etc.
 from marvin.lib.utils import cleanup_resources
 
-from solidfire import solidfire_element_api as sf_api
-
-# on April 14, 2016: Ran 11 tests in 2494.043s with three hosts (resign = True)
-# on April 14, 2016: Ran 11 tests in 2033.516s with three hosts (resign = False)
-
-# on May 2, 2016: Ran 11 tests in 2352.461s with two hosts (resign = True)
-# on May 2, 2016: Ran 11 tests in 1982.066s with two hosts (resign = False)
-
+from dfs_sdk import DateraApi as datera_api
 
 class TestData():
     account = "account"

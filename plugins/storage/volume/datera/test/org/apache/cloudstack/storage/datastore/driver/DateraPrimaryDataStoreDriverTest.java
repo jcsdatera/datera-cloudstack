@@ -17,13 +17,57 @@
 
 package org.apache.cloudstack.storage.datastore.driver;
 
+import com.cloud.dc.ClusterDetailsDao;
+import com.cloud.dc.dao.ClusterDao;
+import com.cloud.host.Host;
+import com.cloud.host.dao.HostDao;
+import com.cloud.storage.dao.SnapshotDao;
+import com.cloud.storage.dao.SnapshotDetailsDao;
+import com.cloud.storage.dao.VMTemplatePoolDao;
+import com.cloud.storage.dao.VolumeDao;
+import com.cloud.storage.dao.VolumeDetailsDao;
+import org.apache.cloudstack.engine.subsystem.api.storage.VolumeDataFactory;
+import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
 import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mock;
+
+import javax.inject.Inject;
+
+import static org.mockito.Mockito.when;
 
 public class DateraPrimaryDataStoreDriverTest {
 
+    @Inject
+    DateraPrimaryDataStoreDriver dateraDriver = new DateraPrimaryDataStoreDriver();
+
+    @Mock private ClusterDao _clusterDao;
+    @Mock private ClusterDetailsDao _clusterDetailsDao;
+    @Mock private HostDao _hostDao;
+    @Mock private SnapshotDao _snapshotDao;
+    @Mock private SnapshotDetailsDao _snapshotDetailsDao;
+    @Mock private PrimaryDataStoreDao _storagePoolDao;
+    @Mock private StoragePoolDetailsDao _storagePoolDetailsDao;
+    @Mock private VolumeDao _volumeDao;
+    @Mock private VMTemplatePoolDao tmpltPoolDao;
+    @Mock private PrimaryDataStoreDao storagePoolDao;
+    @Mock private VolumeDetailsDao volumeDetailsDao;
+    @Mock private SnapshotDetailsDao snapshotDetailsDao;
+    @Mock private VolumeDataFactory volumeDataFactory;
+
+    // Mock variables
+    @Mock private Host mockHost;
+
+
+    //Constants
+    private static final String STORAGE_URL = "TODO";
+
     @Before
     public void setUp() throws Exception {
+
+        //setup Mock objects
+        when(mockHost.getStorageUrl()).thenReturn(STORAGE_URL);
 
     }
 

@@ -222,7 +222,6 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
         return true;
     }
 
-    // invoked to delete primary storage that is based on the SolidFire plug-in
     @Override
     public boolean deleteDataStore(DataStore store) {
         List<SnapshotVO> lstSnapshots = _snapshotDao.listAll();

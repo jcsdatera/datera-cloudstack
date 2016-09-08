@@ -197,10 +197,6 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             DateraObject.InitiatorGroup initiatorGroup = null;
             String initiatorGroupKey = DateraUtil.getInitiatorGroupKey(storagePoolId);
 
-            ClusterDetailsVO clusterDetail = _clusterDetailsDao.findDetail(clusterId, initiatorGroupKey);
-
-            String initiatorGroupName = clusterDetail != null ? clusterDetail.getValue() : null;
-
             List<HostVO> hosts = _hostDao.findByClusterId(clusterId);
 
             if (!DateraUtil.hostsSupport_iScsi(hosts)) {
@@ -208,18 +204,17 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             }
 
             // We don't have the initiator group, create one
-            if (initiatorGroupName == null) {
-                initiatorGroupName = DateraUtil.INITIATOR_GROUP_PREFIX +  "-" + cluster.getUuid();
+            String initiatorGroupName = DateraUtil.INITIATOR_GROUP_PREFIX +  "-" + cluster.getUuid();
 
-                initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
+            initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
 
-                if (initiatorGroup == null) {
-                    initiatorGroup = DateraUtil.createInitiatorGroup(conn, initiatorGroupName);
-                }
+            if (initiatorGroup == null) {
 
+                initiatorGroup = DateraUtil.createInitiatorGroup(conn, initiatorGroupName);
                 //Save it to the DB
-                clusterDetail = new ClusterDetailsVO(clusterId, initiatorGroupKey, initiatorGroupName);
+                ClusterDetailsVO clusterDetail = new ClusterDetailsVO(clusterId, initiatorGroupKey, initiatorGroupName);
                 _clusterDetailsDao.persist(clusterDetail);
+
             } else {
                 initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
             }
@@ -251,6 +246,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
                     Thread.sleep(DateraUtil.POLL_TIMEOUT_MS);
                     retries--;
                 }
+                //FIXME: Sleep anyways
+                Thread.sleep(9000); // ms
             }
 
             return true;
@@ -279,8 +276,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
         Preconditions.checkNotNull(assignedInitiatorGroups);
 
-        for (String groupName : assignedInitiatorGroups.keySet()) {
-            if (initiatorGroup.getName().equals(groupName)) {
+        for (DateraObject.InitiatorGroup ig : assignedInitiatorGroups.values()) {
+            if (initiatorGroup.getName().equals(ig.getName())) {
                 return true;
             }
         }
@@ -318,16 +315,24 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
         try {
 
-            ClusterDetailsVO clusterDetail = _clusterDetailsDao.findDetail(clusterId, DateraUtil.getInitiatorGroupKey(storagePoolId));
+            String initiatorGroupName = DateraUtil.INITIATOR_GROUP_PREFIX +  "-" + cluster.getUuid();
 
-            String initatorGroupName = clusterDetail != null ? clusterDetail.getValue() : null;
+            DateraObject.DateraConnection conn = DateraUtil.getDateraConnection(storagePoolId, _storagePoolDetailsDao);
 
-            if (initatorGroupName != null) {
-                DateraObject.DateraConnection conn = DateraUtil.getDateraConnection(storagePoolId, _storagePoolDetailsDao);
-                DateraUtil.removeGroupFromAppInstance(conn, initatorGroupName, appInstanceName);
+            DateraObject.AppInstance appInstance = DateraUtil.getAppInstance(conn, appInstanceName);
+            DateraObject.InitiatorGroup initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
+
+            if (initiatorGroup != null && appInstance != null) {
+
+                DateraUtil.removeGroupFromAppInstance(conn, initiatorGroupName, appInstanceName);
+                int retries = DateraUtil.DEFAULT_RETRIES;
+                while (isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance) && retries > 0) {
+                    Thread.sleep(DateraUtil.POLL_TIMEOUT_MS);
+                    retries--;
+                }
             }
 
-        } catch (DateraObject.DateraError | UnsupportedEncodingException dateraError) {
+        } catch (DateraObject.DateraError | UnsupportedEncodingException | InterruptedException dateraError) {
             String errMesg = "Error revoking access for Volume : " + dataObject.getId();
             s_logger.warn(errMesg, dateraError);
             throw new CloudRuntimeException(errMesg);
@@ -367,8 +372,18 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
     }
 
     private String getAppInstanceName(DataObject dataObject) {
-        String[] names = {DateraUtil.APPINSTANCE_PREFIX, dataObject.getType().toString(), dataObject.getUuid()};
-        return StringUtils.join("-", names);
+        ArrayList<String> name = new ArrayList<>();
+
+        name.add(DateraUtil.APPINSTANCE_PREFIX);
+        name.add(dataObject.getType().toString());
+        name.add(dataObject.getUuid());
+
+        if (dataObject.getType() == DataObjectType.TEMPLATE){
+            //For cached templates, we will also add the pool ID
+            name.add(String.valueOf(dataObject.getDataStore().getId()));
+        }
+
+        return StringUtils.join("-", name.toArray());
     }
 
     // Not being used right now as Datera doesn't support min IOPS
@@ -605,8 +620,6 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         Preconditions.checkArgument(storagePoolId > 0, "storagePoolId should be > 0");
 
         verifySufficientBytesForStoragePool(volumeInfo, storagePoolId);
-        verifySufficientIopsForStoragePool(storagePoolId, volumeInfo.getId(),
-                volumeInfo.getMinIops() != null ? volumeInfo.getMinIops() : getDefaultMinIops(storagePoolId));
 
         DateraObject.AppInstance appInstance;
 
@@ -1343,13 +1356,11 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
                 Preconditions.checkNotNull(appInstance);
 
-                verifySufficientIopsForStoragePool(storagePoolId, volumeInfo.getId(), payload.newMinIops);
-
                 if (appInstance.getSize() < newSize) {
                     DateraUtil.updateAppInstanceSize(conn, appInstanceName, Ints.checkedCast(newSize));
                 }
 
-                if (appInstance.getTotalIops() != payload.newMaxIops) {
+                if (payload.newMaxIops != null && appInstance.getTotalIops() != payload.newMaxIops) {
                     DateraUtil.updateAppInstanceIops(conn, appInstanceName, Ints.checkedCast(payload.newMaxIops));
                 }
 
@@ -1381,32 +1392,6 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         result.setResult(errMsg);
 
         callback.complete(result);
-    }
-
-    /**
-     * Returns if there is enough capacity (IOPS and/or Size) in the storage pool to hold the volume
-     * pointed by {@code volumeId}, raises an exception otherwise.
-     *
-     * @param storagePoolId primary storage
-     * @param volumeId  volumeID which is going to be added
-     * @param newMinIops new IOPS
-     */
-    private void verifySufficientIopsForStoragePool(long storagePoolId, long volumeId, long newMinIops) {
-        StoragePoolVO storagePool = _storagePoolDao.findById(storagePoolId);
-        VolumeVO volume = _volumeDao.findById(volumeId);
-
-        long currentMinIops = volume.getMinIops();
-        long diffInMinIops = newMinIops - currentMinIops;
-
-        // if the desire is for more IOPS
-        if (diffInMinIops > 0) {
-            long usedIops = getUsedIops(storagePool);
-            long capacityIops = storagePool.getCapacityIops();
-
-            if (usedIops + diffInMinIops > capacityIops) {
-                throw new CloudRuntimeException("Insufficient number of IOPS available in this storage pool");
-            }
-        }
     }
 
     /**

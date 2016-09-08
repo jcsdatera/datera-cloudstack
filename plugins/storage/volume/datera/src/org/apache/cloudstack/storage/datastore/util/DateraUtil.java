@@ -685,7 +685,12 @@ public class DateraUtil {
     }
 
     public static int getNumReplicas(String url) {
-        return getPort(DateraUtil.NUM_REPLICAS, url, DEFAULT_NUM_REPLICAS);
+        try {
+            String value = getValue(DateraUtil.NUM_REPLICAS, url, false);
+            return Integer.parseInt(value);
+        }catch (NumberFormatException ex){
+            return DEFAULT_NUM_REPLICAS;
+        }
     }
 
     private static String getVip(String keyToMatch, String url) {
@@ -808,11 +813,18 @@ public class DateraUtil {
         }
 
         for (Host host : hosts) {
-            if (host == null || host.getStorageUrl() == null || host.getStorageUrl().trim().length() == 0 || !host.getStorageUrl().startsWith("iqn")) {
+            if (!hostSupport_iScsi(host)){
                 return false;
             }
         }
 
+        return true;
+    }
+
+    public static boolean hostSupport_iScsi(Host host) {
+        if (host == null || host.getStorageUrl() == null || host.getStorageUrl().trim().length() == 0 || !host.getStorageUrl().startsWith("iqn")) {
+                return false;
+        }
         return true;
     }
 
@@ -885,4 +897,6 @@ public class DateraUtil {
 
         return tokens[1].trim();
     }
+
+
 }

@@ -149,7 +149,7 @@ public class DateraHostListener implements HypervisorHostListener {
 
                     String initiatorGroupName = clusterDetail != null ? clusterDetail.getValue() : null;
 
-                    if (initiatorGroupName != null) {
+                    if (initiatorGroupName != null && DateraUtil.hostSupport_iScsi(hostVO) ) {
                         DateraObject.DateraConnection conn = DateraUtil.getDateraConnection(storagePool.getId(), _storagePoolDetailsDao);
                         DateraObject.Initiator initiator = DateraUtil.getInitiator(conn, hostVO.getStorageUrl());
                         DateraObject.InitiatorGroup initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
