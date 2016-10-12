@@ -18,15 +18,22 @@
  */
 package org.apache.cloudstack.storage.datastore.lifecycle;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
-import javax.inject.Inject;
-
-import org.apache.cloudstack.storage.datastore.util.DateraUtil;
-import org.apache.log4j.Logger;
-
+import com.cloud.agent.api.StoragePoolInfo;
+import com.cloud.capacity.CapacityManager;
+import com.cloud.dc.DataCenterVO;
+import com.cloud.dc.dao.DataCenterDao;
+import com.cloud.host.HostVO;
+import com.cloud.hypervisor.Hypervisor.HypervisorType;
+import com.cloud.resource.ResourceManager;
+import com.cloud.storage.SnapshotVO;
+import com.cloud.storage.Storage.StoragePoolType;
+import com.cloud.storage.StorageManager;
+import com.cloud.storage.StoragePool;
+import com.cloud.storage.StoragePoolAutomation;
+import com.cloud.storage.dao.SnapshotDao;
+import com.cloud.storage.dao.SnapshotDetailsDao;
+import com.cloud.storage.dao.SnapshotDetailsVO;
+import com.cloud.utils.exception.CloudRuntimeException;
 import org.apache.cloudstack.engine.subsystem.api.storage.ClusterScope;
 import org.apache.cloudstack.engine.subsystem.api.storage.DataStore;
 import org.apache.cloudstack.engine.subsystem.api.storage.HostScope;
@@ -35,24 +42,14 @@ import org.apache.cloudstack.engine.subsystem.api.storage.PrimaryDataStoreParame
 import org.apache.cloudstack.engine.subsystem.api.storage.ZoneScope;
 import org.apache.cloudstack.storage.datastore.db.PrimaryDataStoreDao;
 import org.apache.cloudstack.storage.datastore.db.StoragePoolVO;
+import org.apache.cloudstack.storage.datastore.util.DateraUtil;
 import org.apache.cloudstack.storage.volume.datastore.PrimaryDataStoreHelper;
+import org.apache.log4j.Logger;
 
-import com.cloud.agent.api.StoragePoolInfo;
-import com.cloud.capacity.CapacityManager;
-import com.cloud.dc.DataCenterVO;
-import com.cloud.dc.dao.DataCenterDao;
-import com.cloud.host.HostVO;
-import com.cloud.hypervisor.Hypervisor.HypervisorType;
-import com.cloud.resource.ResourceManager;
-import com.cloud.storage.StoragePool;
-import com.cloud.storage.Storage.StoragePoolType;
-import com.cloud.storage.dao.SnapshotDao;
-import com.cloud.storage.dao.SnapshotDetailsDao;
-import com.cloud.storage.dao.SnapshotDetailsVO;
-import com.cloud.storage.SnapshotVO;
-import com.cloud.storage.StorageManager;
-import com.cloud.storage.StoragePoolAutomation;
-import com.cloud.utils.exception.CloudRuntimeException;
+import javax.inject.Inject;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycle {
     private static final Logger s_logger = Logger.getLogger(DateraPrimaryDataStoreLifeCycle.class);
@@ -67,7 +64,6 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
     @Inject private StorageManager _storageMgr;
     @Inject private StoragePoolAutomation storagePoolAutomation;
 
-    // invoked to add primary storage that is based on the SolidFire plug-in
     @Override
     public DataStore initialize(Map<String, Object> dsInfos) {
 
@@ -164,11 +160,9 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
 
         details.put(DateraUtil.NUM_REPLICAS, String.valueOf(DateraUtil.getNumReplicas(url)));
 
-        // this adds a row in the cloud.storage_pool table for this SolidFire cluster
         return dataStoreHelper.createPrimaryDataStore(parameters);
     }
 
-    // do not implement this method for SolidFire's plug-in
     @Override
     public boolean attachHost(DataStore store, HostScope scope, StoragePoolInfo existingInfo) {
         return true; // should be ignored for zone-wide-only plug-ins like
@@ -220,7 +214,6 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
         return true;
     }
 
-    // invoked to delete primary storage that is based on the SolidFire plug-in
     @Override
     public boolean deleteDataStore(DataStore store) {
         List<SnapshotVO> lstSnapshots = _snapshotDao.listAll();

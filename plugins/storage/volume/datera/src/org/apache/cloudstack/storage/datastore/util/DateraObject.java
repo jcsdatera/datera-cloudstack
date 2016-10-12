@@ -143,7 +143,7 @@ public class DateraObject {
         }
 
         public Volume(Integer newSize) {
-
+            this.size = newSize;
         }
 
         public PerformancePolicy getPerformancePolicy() {

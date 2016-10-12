@@ -83,8 +83,13 @@ public class DateraUtil {
     public static final String STORAGE_POOL_ID = "DateraStoragePoolId";
     public static final String VOLUME_SIZE = "DateraVolumeSize";
     public static final String VOLUME_ID = "DateraVolumeId";
+    public static final long POLL_TIMEOUT_MS = 3000;
+    public static final int DEFAULT_RETRIES = 3;
 
     private static Gson gson = new GsonBuilder().create();
+    public static final String INITIATOR_GROUP_PREFIX = "Cloudstack-InitiatorGroup";
+    public static final String INITIATOR_PREFIX = "Cloudstack-Initiator";
+    public static final String APPINSTANCE_PREFIX = "Cloudstack";
 
     private int managementPort;
     private String managementIp;
@@ -512,7 +517,15 @@ public class DateraUtil {
     }
 
     public static int getNumReplicas(String url) {
-        return getPort(DateraUtil.NUM_REPLICAS, url, DEFAULT_NUM_REPLICAS);
+        try {
+
+            String value = getValue(DateraUtil.NUM_REPLICAS, url, false);
+            return Integer.parseInt(value);
+
+        }catch (NumberFormatException ex){
+            return DEFAULT_NUM_REPLICAS;
+        }
+
     }
 
     private static String getVip(String keyToMatch, String url) {
@@ -629,13 +642,24 @@ public class DateraUtil {
         return new DateraObject.DateraConnection(mVip, mPort, clusterAdminUsername, clusterAdminPassword) ;
     }
 
+    public static boolean isInitiatorPresentInGroup(DateraObject.Initiator initiator, DateraObject.InitiatorGroup initiatorGroup) {
+
+        for (String memberPath : initiatorGroup.getMembers() ) {
+            if (memberPath.equals(initiator.getPath())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static boolean hostsSupport_iScsi(List<HostVO> hosts) {
         if (hosts == null || hosts.size() == 0) {
             return false;
         }
 
         for (Host host : hosts) {
-            if (host == null || host.getStorageUrl() == null || host.getStorageUrl().trim().length() == 0 || !host.getStorageUrl().startsWith("iqn")) {
+            if (!hostSupport_iScsi(host)){
                 return false;
             }
         }
@@ -643,12 +667,20 @@ public class DateraUtil {
         return true;
     }
 
+    public static boolean hostSupport_iScsi(Host host) {
+        if (host == null || host.getStorageUrl() == null || host.getStorageUrl().trim().length() == 0 || !host.getStorageUrl().startsWith("iqn")) {
+            return false;
+        }
+        return true;
+    }
+
+
     public static String getInitiatorGroupKey(long storagePoolId) {
         return "DateraInitiatorGroup-" + storagePoolId;
     }
 
     public static int bytesToGb(long volumeSizeBytes) {
-        return (int) (volumeSizeBytes/(1024*1024*1024) + 1);
+        return (int) Math.ceil(volumeSizeBytes/1073741824.0);
     }
 
     public static long gbToBytes(int volumeSizeGb) {

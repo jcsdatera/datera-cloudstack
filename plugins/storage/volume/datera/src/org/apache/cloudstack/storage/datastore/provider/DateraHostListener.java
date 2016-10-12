@@ -18,18 +18,13 @@
  */
 package org.apache.cloudstack.storage.datastore.provider;
 
-import javax.inject.Inject;
-
-import org.apache.log4j.Logger;
-
-import org.apache.cloudstack.engine.subsystem.api.storage.DataStoreManager;
-import org.apache.cloudstack.engine.subsystem.api.storage.HypervisorHostListener;
-
 import com.cloud.agent.AgentManager;
 import com.cloud.agent.api.Answer;
 import com.cloud.agent.api.ModifyStoragePoolAnswer;
 import com.cloud.agent.api.ModifyStoragePoolCommand;
 import com.cloud.alert.AlertManager;
+import com.cloud.dc.ClusterDetailsDao;
+import com.cloud.dc.dao.ClusterDao;
 import com.cloud.host.HostVO;
 import com.cloud.host.dao.HostDao;
 import com.cloud.hypervisor.Hypervisor.HypervisorType;
@@ -38,6 +33,12 @@ import com.cloud.storage.StoragePool;
 import com.cloud.storage.StoragePoolHostVO;
 import com.cloud.storage.dao.StoragePoolHostDao;
 import com.cloud.utils.exception.CloudRuntimeException;
+import org.apache.cloudstack.engine.subsystem.api.storage.DataStoreManager;
+import org.apache.cloudstack.engine.subsystem.api.storage.HypervisorHostListener;
+import org.apache.cloudstack.storage.datastore.db.StoragePoolDetailsDao;
+import org.apache.log4j.Logger;
+
+import javax.inject.Inject;
 
 public class DateraHostListener implements HypervisorHostListener {
     private static final Logger s_logger = Logger.getLogger(DateraHostListener.class);
@@ -52,6 +53,12 @@ public class DateraHostListener implements HypervisorHostListener {
     private HostDao _hostDao;
     @Inject
     private StoragePoolHostDao storagePoolHostDao;
+    @Inject
+    private StoragePoolDetailsDao _storagePoolDetailsDao;
+    @Inject
+    private ClusterDao _clusterDao;
+    @Inject
+    private ClusterDetailsDao _clusterDetailsDao;
 
     @Override
     public boolean hostConnect(long hostId, long storagePoolId) {
