@@ -317,10 +317,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             DateraObject.InitiatorGroup initiatorGroup = DateraUtil.getInitiatorGroup(conn, initiatorGroupName);
 
             if (initiatorGroup != null && appInstance != null) {
-
                 DateraUtil.removeGroupFromAppInstance(conn, initiatorGroupName, appInstanceName);
                 DateraUtil.pollAppInstanceAvailable(conn, appInstanceName);
-
             }
 
         } catch (DateraObject.DateraError | UnsupportedEncodingException dateraError) {

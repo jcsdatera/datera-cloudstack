@@ -257,7 +257,7 @@ public class DateraUtil {
         //create is async, do a get to fetch the IQN
         executeApiRequest(conn, getAppInstance);
 
-        return pollAppInstanceAvailable(conn, name);
+        return pollVolumeAvailable(conn, name);
     }
 
     public static DateraObject.AppInstance createAppInstance(DateraObject.DateraConnection conn, String name, int size, int totalIops, int replicaCount) throws UnsupportedEncodingException, DateraObject.DateraError {
@@ -289,7 +289,7 @@ public class DateraUtil {
         return getAppInstance(conn, name);
     }
 
-    public static DateraObject.AppInstance pollAppInstanceAvailable(DateraObject.DateraConnection conn, String appInstanceName) throws DateraObject.DateraError {
+    public static DateraObject.AppInstance pollVolumeAvailable(DateraObject.DateraConnection conn, String appInstanceName) throws DateraObject.DateraError {
 
         int retries = DateraUtil.DEFAULT_RETRIES;
         DateraObject.AppInstance appInstance = null;
@@ -302,6 +302,22 @@ public class DateraUtil {
             }
             retries--;
         } while ((appInstance != null && !Objects.equals(appInstance.getVolumeOpState(), DateraUtil.STATE_AVAILABLE)) && retries>0);
+        return appInstance;
+    }
+
+    public static DateraObject.AppInstance pollAppInstanceAvailable(DateraObject.DateraConnection conn, String appInstanceName) throws DateraObject.DateraError {
+
+        int retries = DateraUtil.DEFAULT_RETRIES;
+        DateraObject.AppInstance appInstance = null;
+        do {
+            appInstance = getAppInstance(conn, appInstanceName);
+            try {
+                Thread.sleep(DateraUtil.POLL_TIMEOUT_MS);
+            } catch (InterruptedException e) {
+                return null;
+            }
+            retries--;
+        } while ((appInstance != null && !Objects.equals(appInstance.getAdminState(), DateraObject.AppState.ONLINE.toString())) && retries>0);
         return appInstance;
     }
 

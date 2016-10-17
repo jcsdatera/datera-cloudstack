@@ -260,6 +260,10 @@ public class DateraObject {
             StorageInstance storageInstance = storageInstances.get(DEFAULT_STORAGE_NAME);
             return storageInstance.getVolume().getOpState();
         }
+
+        public String getAdminState() {
+            return adminState;
+        }
     }
 
     public static class Initiator {
