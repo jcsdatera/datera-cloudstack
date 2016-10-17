@@ -241,17 +241,11 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             //assgin the initiatorgroup to appInstance
             if (!isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance)) {
                 DateraUtil.assignGroupToAppInstance(conn, initiatorGroupName, appInstanceName);
-                int retries = DateraUtil.DEFAULT_RETRIES;
-                while (!isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance) && retries > 0) {
-                    Thread.sleep(DateraUtil.POLL_TIMEOUT_MS);
-                    retries--;
-                }
-                //FIXME: Sleep anyways
-                Thread.sleep(9000); // ms
+                DateraUtil.pollAppInstanceAvailable(conn, appInstanceName);
             }
 
             return true;
-        } catch (DateraObject.DateraError | UnsupportedEncodingException | InterruptedException dateraError) {
+        } catch (DateraObject.DateraError | UnsupportedEncodingException dateraError) {
             s_logger.warn(dateraError.getMessage(), dateraError );
             throw new CloudRuntimeException("Unable to grant access to volume " + dateraError.getMessage());
         } finally {
@@ -325,14 +319,11 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             if (initiatorGroup != null && appInstance != null) {
 
                 DateraUtil.removeGroupFromAppInstance(conn, initiatorGroupName, appInstanceName);
-                int retries = DateraUtil.DEFAULT_RETRIES;
-                while (isInitiatorGroupAssignedToAppInstance(conn, initiatorGroup, appInstance) && retries > 0) {
-                    Thread.sleep(DateraUtil.POLL_TIMEOUT_MS);
-                    retries--;
-                }
+                DateraUtil.pollAppInstanceAvailable(conn, appInstanceName);
+
             }
 
-        } catch (DateraObject.DateraError | UnsupportedEncodingException | InterruptedException dateraError) {
+        } catch (DateraObject.DateraError | UnsupportedEncodingException dateraError) {
             String errMesg = "Error revoking access for Volume : " + dataObject.getId();
             s_logger.warn(errMesg, dateraError);
             throw new CloudRuntimeException(errMesg);
