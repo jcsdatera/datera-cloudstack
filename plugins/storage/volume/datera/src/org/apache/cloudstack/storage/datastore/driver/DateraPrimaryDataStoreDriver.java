@@ -702,11 +702,15 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
      */
     private DateraObject.AppInstance createDateraVolume(DateraObject.DateraConnection conn, VolumeInfo volumeInfo, long storagePoolId) throws UnsupportedEncodingException, DateraObject.DateraError {
 
-        int minIops = Ints.checkedCast(volumeInfo.getMinIops());
-        int maxIops = Ints.checkedCast(volumeInfo.getMaxIops());
+        int minIops = Ints.checkedCast(getDefaultMinIops(storagePoolId));
+        int maxIops = Ints.checkedCast(getDefaultMaxIops(storagePoolId));
 
-        if (maxIops <= 0) {  // We don't care about min iops for now
-            maxIops = Ints.checkedCast(getDefaultMaxIops(storagePoolId));
+        if (volumeInfo.getMinIops() != null) {
+            minIops = Ints.checkedCast(volumeInfo.getMinIops());
+        }
+
+        if (volumeInfo.getMinIops() != null) {
+            minIops = Ints.checkedCast(Math.max(minIops, Ints.checkedCast(volumeInfo.getMinIops())));
         }
 
         int replicas = getNumReplicas(storagePoolId);
@@ -715,7 +719,6 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         int volumeSizeGb = DateraUtil.bytesToGb(volumeSizeBytes);
 
         return DateraUtil.createAppInstance(conn, getAppInstanceName(volumeInfo), volumeSizeGb, maxIops, replicas);
-
     }
 
     /**
