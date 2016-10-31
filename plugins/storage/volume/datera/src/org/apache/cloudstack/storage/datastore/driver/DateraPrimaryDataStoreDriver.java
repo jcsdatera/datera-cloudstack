@@ -959,11 +959,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         }
 
         if (callback != null) {
-
             CreateCmdResult result = new CreateCmdResult(iqn, new Answer(null, errMsg == null, errMsg));
-
             result.setResult(errMsg);
-
             callback.complete(result);
         }
     }
@@ -1011,11 +1008,11 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             s_logger.error(errMsg);
         }
 
-        CommandResult result = new CommandResult();
-
-        result.setResult(errMsg);
-
-        callback.complete(result);
+        if (callback != null) {
+            CommandResult result = new CommandResult();
+            result.setResult(errMsg);
+            callback.complete(result);
+        }
 
     }
 
@@ -1116,7 +1113,9 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             result.setResult(ex.toString());
         }
 
-        callback.complete(result);
+        if (callback != null) {
+            callback.complete(result);
+        }
     }
 
 
@@ -1379,11 +1378,11 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             errMsg = "Invalid DataObjectType (" + dataObject.getType() + ") passed to resize";
         }
 
-        CreateCmdResult result = new CreateCmdResult(iqn, new Answer(null, errMsg == null, errMsg));
-
-        result.setResult(errMsg);
-
-        callback.complete(result);
+        if (callback != null) {
+            CreateCmdResult result = new CreateCmdResult(iqn, new Answer(null, errMsg == null, errMsg));
+            result.setResult(errMsg);
+            callback.complete(result);
+        }
     }
 
     /**
