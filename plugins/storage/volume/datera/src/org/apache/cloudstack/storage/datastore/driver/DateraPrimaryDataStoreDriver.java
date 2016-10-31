@@ -525,8 +525,11 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
                 if (hypervisorSnapshotReserve != null) {
                     hypervisorSnapshotReserve = Math.max(hypervisorSnapshotReserve, s_lowestHypervisorSnapshotReserve);
-                    volumeSize += volumeSize * (hypervisorSnapshotReserve / 100f);
+                } else {
+                    hypervisorSnapshotReserve = s_lowestHypervisorSnapshotReserve;
                 }
+
+                volumeSize += volumeSize * (hypervisorSnapshotReserve / 100f);
                 break;
 
             case TEMPLATE:
@@ -709,8 +712,8 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
             minIops = Ints.checkedCast(volumeInfo.getMinIops());
         }
 
-        if (volumeInfo.getMinIops() != null) {
-            minIops = Ints.checkedCast(Math.max(minIops, Ints.checkedCast(volumeInfo.getMinIops())));
+        if (volumeInfo.getMaxIops() != null) {
+            maxIops = Ints.checkedCast(Math.max(minIops, Ints.checkedCast(volumeInfo.getMaxIops())));
         }
 
         int replicas = getNumReplicas(storagePoolId);
