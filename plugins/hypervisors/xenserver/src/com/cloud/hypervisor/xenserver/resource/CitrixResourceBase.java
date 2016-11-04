@@ -109,6 +109,7 @@ import com.xensource.xenapi.VLAN;
 import com.xensource.xenapi.VM;
 import com.xensource.xenapi.XenAPIObject;
 import org.apache.cloudstack.framework.config.ConfigKey;
+import org.apache.cloudstack.framework.config.Configurable;
 import org.apache.cloudstack.storage.to.TemplateObjectTO;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.commons.io.FileUtils;
@@ -163,7 +164,7 @@ import java.util.concurrent.TimeoutException;
  * before you do any changes in this code here.
  *
  */
-public abstract class CitrixResourceBase implements ServerResource, HypervisorResource, VirtualRouterDeployer {
+public abstract class CitrixResourceBase implements ServerResource, HypervisorResource, VirtualRouterDeployer, Configurable {
     /**
      * used to describe what type of resource a storage device is of
      */
@@ -5659,6 +5660,10 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
             return false;
         }
 
+    }
+
+    public ConfigKey<?>[] getConfigKeys(){
+        return new ConfigKey<?>[] {XenServerManagedStorageSrType};
     }
 
 }
