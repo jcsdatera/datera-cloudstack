@@ -108,6 +108,7 @@ import com.xensource.xenapi.VIF;
 import com.xensource.xenapi.VLAN;
 import com.xensource.xenapi.VM;
 import com.xensource.xenapi.XenAPIObject;
+import org.apache.cloudstack.framework.config.ConfigKey;
 import org.apache.cloudstack.storage.to.TemplateObjectTO;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.commons.io.FileUtils;
@@ -269,6 +270,8 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
     protected  String managedStorageSrType;
 
 
+
+
     protected XenServerUtilitiesHelper xenServerUtilitiesHelper = new XenServerUtilitiesHelper();
 
     protected int _wait;
@@ -279,6 +282,13 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
     double _xsVirtualizationFactor = 63.0 / 64.0; // 1 - virtualization overhead
 
     protected StorageSubsystemCommandHandler storageHandler;
+
+    private static final ConfigKey<String> XenServerManagedStorageSrType = new ConfigKey<String>("Advanced", String.class,
+            "xenserver.managedstorage.srtype",
+            "lvmoiscsi",
+            "The type of SR to use when using managed storage for VDI-per-LUN",
+            true);
+
 
     public CitrixResourceBase() {
     }
@@ -806,7 +816,7 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
         _storageNetworkName2 = (String) params.get("storage.network.device2");
 
         _heartbeatTimeout = NumbersUtil.parseInt((String) params.get("xenserver.heartbeat.timeout"), 120);
-        managedStorageSrType = (String) params.get("xenserver.managedstorage.srtype");
+        managedStorageSrType = XenServerManagedStorageSrType.value();
         _heartbeatInterval = NumbersUtil.parseInt((String) params.get("xenserver.heartbeat.interval"), 60);
 
         String value = (String) params.get("wait");
