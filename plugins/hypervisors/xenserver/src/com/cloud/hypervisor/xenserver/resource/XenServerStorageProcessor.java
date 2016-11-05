@@ -50,6 +50,8 @@ import com.xensource.xenapi.Types.XenAPIException;
 import com.xensource.xenapi.VBD;
 import com.xensource.xenapi.VDI;
 import com.xensource.xenapi.VM;
+import org.apache.cloudstack.framework.config.ConfigKey;
+import org.apache.cloudstack.framework.config.Configurable;
 import org.apache.cloudstack.storage.command.AttachAnswer;
 import org.apache.cloudstack.storage.command.AttachCommand;
 import org.apache.cloudstack.storage.command.AttachPrimaryDataStoreAnswer;
@@ -88,7 +90,7 @@ import java.util.UUID;
 import static com.cloud.utils.ReflectUtil.flattenProperties;
 import static com.google.common.collect.Lists.newArrayList;
 
-public class XenServerStorageProcessor implements StorageProcessor {
+public class XenServerStorageProcessor implements StorageProcessor, Configurable {
     private static final Logger s_logger = Logger.getLogger(XenServerStorageProcessor.class);
     protected CitrixResourceBase hypervisorResource;
     protected String BaseMountPointOnHost = "/var/run/cloud_mount";
@@ -96,6 +98,14 @@ public class XenServerStorageProcessor implements StorageProcessor {
     public XenServerStorageProcessor(final CitrixResourceBase resource) {
         hypervisorResource = resource;
     }
+
+    public static final ConfigKey<String> XenServerManagedStorageSrType = new ConfigKey<String>("Advanced", String.class,
+            "xenserver.managedstorage.srtype",
+            "lvmoiscsi",
+            "The type of SR to use when using managed storage for VDI-per-LUN",
+            false);
+
+
 
     // if the source SR needs to be attached to, do so
     // take a snapshot of the source VDI (on the source SR)
@@ -164,7 +174,10 @@ public class XenServerStorageProcessor implements StorageProcessor {
     public ResignatureAnswer resignature(final ResignatureCommand cmd) {
         SR newSr = null;
 
+        //TODO logic for iscsi
+
         final Connection conn = hypervisorResource.getConnection();
+        final ResignatureAnswer resignatureAnswer = new ResignatureAnswer();
 
         try {
             final Map<String, String> details = cmd.getDetails();
@@ -174,21 +187,29 @@ public class XenServerStorageProcessor implements StorageProcessor {
             final String chapInitiatorUsername = details.get(DiskTO.CHAP_INITIATOR_USERNAME);
             final String chapInitiatorSecret = details.get(DiskTO.CHAP_INITIATOR_SECRET);
 
-            newSr = hypervisorResource.getIscsiSR(conn, iScsiName, storageHost, iScsiName, chapInitiatorUsername, chapInitiatorSecret, true, false);
+            if (XenServerManagedStorageSrType.value().equals(SRType.VDILUN.toString())) {
 
-            Set<VDI> vdis = newSr.getVDIs(conn);
+                //resignature is not needed for VDILUN type of SR, so fake it
+                resignatureAnswer.setPath(details.get(DiskTO.PATH));
+                resignatureAnswer.setSize(Long.parseLong(details.get(DiskTO.VOLUME_SIZE)));
+                resignatureAnswer.setFormat(ImageFormat.VHD);
 
-            if (vdis.size() != 1) {
-                throw new RuntimeException("There were " + vdis.size() + " VDIs in the SR.");
+            } else {
+
+                newSr = hypervisorResource.getIscsiSR(conn, iScsiName, storageHost, iScsiName, chapInitiatorUsername, chapInitiatorSecret, true, false);
+
+                Set<VDI> vdis = newSr.getVDIs(conn);
+
+                if (vdis.size() != 1) {
+                    throw new RuntimeException("There were " + vdis.size() + " VDIs in the SR.");
+                }
+
+                VDI vdi = vdis.iterator().next();
+
+                resignatureAnswer.setSize(vdi.getVirtualSize(conn));
+                resignatureAnswer.setPath(vdi.getUuid(conn));
+                resignatureAnswer.setFormat(ImageFormat.VHD);
             }
-
-            VDI vdi = vdis.iterator().next();
-
-            final ResignatureAnswer resignatureAnswer = new ResignatureAnswer();
-
-            resignatureAnswer.setSize(vdi.getVirtualSize(conn));
-            resignatureAnswer.setPath(vdi.getUuid(conn));
-            resignatureAnswer.setFormat(ImageFormat.VHD);
 
             return resignatureAnswer;
         }
@@ -1803,5 +1824,15 @@ public class XenServerStorageProcessor implements StorageProcessor {
             s_logger.debug("Failed to introduce object", e);
             return new Answer(cmd, false, e.toString());
         }
+    }
+
+    @Override
+    public String getConfigComponentName() {
+        return XenServerStorageProcessor.class.toString();
+    }
+
+    @Override
+    public ConfigKey<?>[] getConfigKeys() {
+        return new ConfigKey<?>[]{XenServerManagedStorageSrType};
     }
 }

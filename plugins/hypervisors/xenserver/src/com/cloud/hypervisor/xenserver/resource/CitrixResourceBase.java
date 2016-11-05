@@ -108,8 +108,6 @@ import com.xensource.xenapi.VIF;
 import com.xensource.xenapi.VLAN;
 import com.xensource.xenapi.VM;
 import com.xensource.xenapi.XenAPIObject;
-import org.apache.cloudstack.framework.config.ConfigKey;
-import org.apache.cloudstack.framework.config.Configurable;
 import org.apache.cloudstack.storage.to.TemplateObjectTO;
 import org.apache.cloudstack.storage.to.VolumeObjectTO;
 import org.apache.commons.io.FileUtils;
@@ -164,7 +162,7 @@ import java.util.concurrent.TimeoutException;
  * before you do any changes in this code here.
  *
  */
-public abstract class CitrixResourceBase implements ServerResource, HypervisorResource, VirtualRouterDeployer, Configurable {
+public abstract class CitrixResourceBase implements ServerResource, HypervisorResource, VirtualRouterDeployer {
     /**
      * used to describe what type of resource a storage device is of
      */
@@ -283,12 +281,6 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
     double _xsVirtualizationFactor = 63.0 / 64.0; // 1 - virtualization overhead
 
     protected StorageSubsystemCommandHandler storageHandler;
-
-    private static final ConfigKey<String> XenServerManagedStorageSrType = new ConfigKey<String>("Advanced", String.class,
-            "xenserver.managedstorage.srtype",
-            "lvmoiscsi",
-            "The type of SR to use when using managed storage for VDI-per-LUN",
-            true);
 
 
     public CitrixResourceBase() {
@@ -817,7 +809,7 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
         _storageNetworkName2 = (String) params.get("storage.network.device2");
 
         _heartbeatTimeout = NumbersUtil.parseInt((String) params.get("xenserver.heartbeat.timeout"), 120);
-        managedStorageSrType = XenServerManagedStorageSrType.value();
+        managedStorageSrType = XenServerStorageProcessor.XenServerManagedStorageSrType.value();
         _heartbeatInterval = NumbersUtil.parseInt((String) params.get("xenserver.heartbeat.interval"), 60);
 
         String value = (String) params.get("wait");
@@ -5661,9 +5653,4 @@ public abstract class CitrixResourceBase implements ServerResource, HypervisorRe
         }
 
     }
-
-    public ConfigKey<?>[] getConfigKeys(){
-        return new ConfigKey<?>[] {XenServerManagedStorageSrType};
-    }
-
 }
