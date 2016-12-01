@@ -1011,6 +1011,7 @@ class TestSnapshots(cloudstackTestCase):
         sql_query = "Update cluster_details Set value = '" + supports_resign + "' Where name = 'supportsResign'"
         cls.dbConnection.execute(sql_query)
 
+    @classmethod
     def _get_supports_resign(cls):
 
         sql_query = "SELECT value from cluster_details Where name='supportsResign' AND cluster_id=%d" % cls.testdata[
