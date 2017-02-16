@@ -23,6 +23,7 @@ from cs.CsFile import CsFile
 
 LEASES = "/var/lib/misc/dnsmasq.leases"
 DHCP_HOSTS = "/etc/dhcphosts.txt"
+DHCP_OPTS = "/etc/dhcpopts.txt"
 CLOUD_CONF = "/etc/dnsmasq.d/cloud.conf"
 
 
@@ -35,16 +36,18 @@ class CsDhcp(CsDataBag):
         self.devinfo = CsHelper.get_device_info()
         self.preseed()
         self.cloud = CsFile(DHCP_HOSTS)
+        self.dhcp_opts = CsFile(DHCP_OPTS)
         self.conf = CsFile(CLOUD_CONF)
 
         self.cloud.repopulate()
+        self.dhcp_opts.repopulate()
 
         for item in self.dbag:
             if item == "id":
                 continue
             self.add(self.dbag[item])
         self.write_hosts()
-        
+
         if self.cloud.is_changed():
             self.delete_leases()
 
@@ -52,6 +55,7 @@ class CsDhcp(CsDataBag):
 
         self.conf.commit()
         self.cloud.commit()
+        self.dhcp_opts.commit()
 
         # We restart DNSMASQ every time the configure.py is called in order to avoid lease problems.
         if not self.cl.is_redundant() or self.cl.is_master():
@@ -103,12 +107,10 @@ class CsDhcp(CsDataBag):
             return
 
     def preseed(self):
-        self.add_host("127.0.0.1", "localhost")
+        self.add_host("127.0.0.1", "localhost %s" % CsHelper.get_hostname())
         self.add_host("::1",     "localhost ip6-localhost ip6-loopback")
         self.add_host("ff02::1", "ip6-allnodes")
         self.add_host("ff02::2", "ip6-allrouters")
-        if self.config.is_vpc():
-            self.add_host("127.0.0.1", CsHelper.get_hostname())
         if self.config.is_router():
             self.add_host(self.config.address().get_guest_ip(), "%s data-server" % CsHelper.get_hostname())
 
@@ -125,9 +127,20 @@ class CsDhcp(CsDataBag):
 
     def add(self, entry):
         self.add_host(entry['ipv4_adress'], entry['host_name'])
-        self.cloud.add("%s,%s,%s,infinite" % (entry['mac_address'],
-                                              entry['ipv4_adress'],
-                                              entry['host_name']))
+        if entry['default_entry'] == True:
+            self.cloud.add("%s,%s,%s,infinite" % (entry['mac_address'],
+                                                  entry['ipv4_adress'],
+                                                  entry['host_name']))
+        else:
+            tag = entry['ipv4_adress'].replace(".","_")
+            self.cloud.add("%s,set:%s,%s,%s,infinite" % (entry['mac_address'],
+                                                  tag,
+                                                  entry['ipv4_adress'],
+                                                  entry['host_name']))
+            self.dhcp_opts.add("%s,%s" % (tag, 3))
+            self.dhcp_opts.add("%s,%s" % (tag, 6))
+            self.dhcp_opts.add("%s,%s" % (tag, 15))
+
         i = IPAddress(entry['ipv4_adress'])
         # Calculate the device
         for v in self.devinfo:
@@ -135,6 +148,7 @@ class CsDhcp(CsDataBag):
                 v['dnsmasq'] = True
                 # Virtual Router
                 v['gateway'] = entry['default_gateway']
+
 
     def add_host(self, ip, hosts):
         self.hosts[ip] = hosts

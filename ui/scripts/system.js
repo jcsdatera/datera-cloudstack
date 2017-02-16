@@ -2585,6 +2585,11 @@
                                                 label: 'label.destroy.router',
                                                 messages: {
                                                     confirm: function (args) {
+                                                        if (args && args.context && args.context.routers[0]) {
+                                                            if (args.context.routers[0].state == 'Running') {
+                                                                return dictionary['message.action.stop.router'] + ' ' + dictionary['message.confirm.destroy.router'];
+                                                            }
+                                                        }
                                                         return 'message.confirm.destroy.router';
                                                     },
                                                     notification: function (args) {
@@ -3752,6 +3757,11 @@
                                                 label: 'label.destroy.router',
                                                 messages: {
                                                     confirm: function (args) {
+                                                        if (args && args.context && args.context.routers[0]) {
+                                                            if (args.context.routers[0].state == 'Running') {
+                                                                return dictionary['message.action.stop.router'] + ' ' + dictionary['message.confirm.destroy.router'];
+                                                            }
+                                                        }
                                                         return 'message.confirm.destroy.router';
                                                     },
                                                     notification: function (args) {
@@ -5774,6 +5784,9 @@
                                         },
                                         l3gatewayserviceuuid: {
                                             label: 'label.nicira.l3gatewayserviceuuid'
+                                        },
+										l2gatewayserviceuuid: {
+                                            label: 'label.nicira.l2gatewayserviceuuid'
                                         }
                                     }
                                 },
@@ -6671,6 +6684,11 @@
                                                 label: 'label.destroy.router',
                                                 messages: {
                                                     confirm: function (args) {
+                                                        if (args && args.context && args.context.routers[0]) {
+                                                            if (args.context.routers[0].state == 'Running') {
+                                                                return dictionary['message.action.stop.router'] + ' ' + dictionary['message.confirm.destroy.router'];
+                                                            }
+                                                        }
                                                         return 'message.confirm.destroy.router';
                                                     },
                                                     notification: function (args) {
@@ -9827,6 +9845,11 @@
                                         label: 'label.destroy.router',
                                         messages: {
                                             confirm: function (args) {
+                                                if (args && args.context && args.context.routers[0]) {
+                                                    if (args.context.routers[0].state == 'Running') {
+                                                        return dictionary['message.action.stop.router'] + ' ' + dictionary['message.confirm.destroy.router'];
+                                                    }
+                                                }
                                                 return 'message.confirm.destroy.router';
                                             },
                                             notification: function (args) {
@@ -12539,6 +12562,9 @@
                         },
                         l3gatewayserviceuuid: {
                             label: 'label.nicira.l3gatewayserviceuuid'
+                        },
+						l2gatewayserviceuuid: {
+                            label: 'label.nicira.l2gatewayserviceuuid'
                         }
                     },
                     actions: {
@@ -12569,7 +12595,10 @@
                                     },
                                     l3gatewayserviceuuid: {
                                         label: 'label.nicira.l3gatewayserviceuuid'
-                                    }
+                                    },
+									l2gatewayserviceuuid: {
+										label: 'label.nicira.l2gatewayserviceuuid'
+									}
                                 }
                             },
                             action: function (args) {
@@ -12687,7 +12716,10 @@
                                     },
                                     l3gatewayserviceuuid: {
                                         label: 'label.nicira.l3gatewayserviceuuid'
-                                    }
+                                    },
+									l2gatewayserviceuuid: {
+										label: 'label.nicira.l2gatewayserviceuuid'
+									}
                                 }],
                                 dataProvider: function (args) {
                                     $.ajax({
@@ -20324,6 +20356,11 @@
         if (l3GatewayServiceUuid != null && l3GatewayServiceUuid.length > 0) {
             array1.push("&l3gatewayserviceuuid=" + todb(args.data.l3gatewayserviceuuid));
         }
+		
+		var l2GatewayServiceUuid = args.data.l2gatewayserviceuuid;
+        if (l2GatewayServiceUuid != null && l2GatewayServiceUuid.length > 0) {
+            array1.push("&l2gatewayserviceuuid=" + todb(args.data.l2gatewayserviceuuid));
+        }
 
         $.ajax({
             url: createURL(apiCmd + array1.join("")),
@@ -20969,8 +21006,9 @@
             }
 
             allowedActions.push("restart");
-
+            allowedActions.push("remove");
             allowedActions.push("viewConsole");
+
             if (isAdmin())
             allowedActions.push("migrate");
         } else if (jsonObj.state == 'Stopped') {

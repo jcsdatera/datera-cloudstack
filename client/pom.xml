@@ -17,7 +17,7 @@
   <parent>
     <groupId>org.apache.cloudstack</groupId>
     <artifactId>cloudstack</artifactId>
-    <version>4.7.2-SNAPSHOT</version>
+    <version>4.8.2.0-SNAPSHOT</version>
   </parent>
 
   <dependencies>
@@ -39,11 +39,6 @@
     <dependency>
       <groupId>org.apache.cloudstack</groupId>
       <artifactId>cloud-plugin-storage-volume-cloudbyte</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-        <dependency>
-      <groupId>org.apache.cloudstack</groupId>
-      <artifactId>cloud-plugin-storage-volume-datera</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>

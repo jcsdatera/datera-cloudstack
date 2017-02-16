@@ -1297,7 +1297,7 @@ public class Upgrade410to420 implements DbUpgrade {
                     s_logger.debug("Index already exists on host_details - not adding new one");
                 } else {
                     // add the index
-                    try(PreparedStatement pstmtUpdate = conn.prepareStatement("ALTER IGNORE TABLE `cloud`.`host_details` ADD INDEX `fk_host_details__host_id` (`host_id`)");) {
+                    try(PreparedStatement pstmtUpdate = conn.prepareStatement("ALTER TABLE `cloud`.`host_details` ADD INDEX `fk_host_details__host_id` (`host_id`)");) {
                         pstmtUpdate.executeUpdate();
                         s_logger.debug("Index did not exist on host_details -  added new one");
                     }catch (SQLException e) {
@@ -1759,9 +1759,9 @@ public class Upgrade410to420 implements DbUpgrade {
                 PreparedStatement pstmtSelectSwiftCount = conn.prepareStatement(sqlSelectSwiftCount);
                 PreparedStatement storeDetailInsert = conn.prepareStatement(sqlInsertStoreDetail);
                 PreparedStatement storeInsert =
-                        conn.prepareStatement("INSERT INTO `cloud`.`image_store` (id, uuid, name, image_provider_name, protocol, url, data_center_id, scope, role, parent, total_size, created) values(?, ?, ?, 'NFS', 'nfs', ?, ?, 'ZONE', ?, ?, ?, ?)");
+                        conn.prepareStatement("INSERT INTO `cloud`.`image_store` (id, uuid, name, image_provider_name, protocol, url, data_center_id, scope, role, parent, total_size, created, removed) values(?, ?, ?, 'NFS', 'nfs', ?, ?, 'ZONE', ?, ?, ?, ?, ?)");
                 PreparedStatement nfsQuery =
-                        conn.prepareStatement("select id, uuid, url, data_center_id, parent, total_size, created from `cloud`.`host` where type = 'SecondaryStorage' and removed is null");
+                        conn.prepareStatement("select id, uuid, url, data_center_id, parent, total_size, created, removed from `cloud`.`host` where type = 'SecondaryStorage'");
                 PreparedStatement pstmtUpdateHostAsRemoved = conn.prepareStatement(sqlUpdateHostAsRemoved);
                 ResultSet rsSelectS3Count = pstmtSelectS3Count.executeQuery();
                 ResultSet rsSelectSwiftCount = pstmtSelectSwiftCount.executeQuery();
@@ -1796,6 +1796,7 @@ public class Upgrade410to420 implements DbUpgrade {
                 int nfs_dcid = rsNfs.getInt("data_center_id");
                 Long nfs_totalsize = rsNfs.getObject("total_size") != null ? rsNfs.getLong("total_size") : null;
                 Date nfs_created = rsNfs.getDate("created");
+                Date nfs_removed = rsNfs.getDate("removed");
 
                 // insert entry in image_store table and image_store_details
                 // table and store host_id and store_id mapping
@@ -1812,6 +1813,7 @@ public class Upgrade410to420 implements DbUpgrade {
                     storeInsert.setNull(8, Types.BIGINT);
                 }
                 storeInsert.setDate(9, nfs_created);
+                storeInsert.setDate(10, nfs_removed);
                 storeInsert.executeUpdate();
             }
 

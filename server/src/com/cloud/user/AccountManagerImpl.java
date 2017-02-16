@@ -159,6 +159,7 @@ import com.cloud.vm.ReservationContextImpl;
 import com.cloud.vm.UserVmManager;
 import com.cloud.vm.UserVmVO;
 import com.cloud.vm.VMInstanceVO;
+import com.cloud.vm.VirtualMachine;
 import com.cloud.vm.VirtualMachineManager;
 import com.cloud.vm.dao.InstanceGroupDao;
 import com.cloud.vm.dao.UserVmDao;
@@ -755,8 +756,17 @@ public class AccountManagerImpl extends ManagerBase implements AccountManager, M
                 s_logger.debug("Expunging # of vms (accountId=" + accountId + "): " + vms.size());
             }
 
-            // no need to catch exception at this place as expunging vm should pass in order to perform further cleanup
             for (UserVmVO vm : vms) {
+                if (vm.getState() != VirtualMachine.State.Destroyed && vm.getState() != VirtualMachine.State.Expunging) {
+                    try {
+                        _vmMgr.destroyVm(vm.getId());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        s_logger.warn("Failed destroying instance " + vm.getUuid() + " as part of account deletion.");
+                    }
+                }
+                // no need to catch exception at this place as expunging vm
+                // should pass in order to perform further cleanup
                 if (!_vmMgr.expunge(vm, callerUserId, caller)) {
                     s_logger.error("Unable to expunge vm: " + vm.getId());
                     accountCleanupNeeded = true;
@@ -2231,12 +2241,16 @@ public class AccountManagerImpl extends ManagerBase implements AccountManager, M
     @DB
     @ActionEvent(eventType = EventTypes.EVENT_REGISTER_FOR_SECRET_API_KEY, eventDescription = "register for the developer API keys")
     public String[] createApiKeyAndSecretKey(RegisterCmd cmd) {
+        Account caller = CallContext.current().getCallingAccount();
         final Long userId = cmd.getId();
 
         User user = getUserIncludingRemoved(userId);
         if (user == null) {
             throw new InvalidParameterValueException("unable to find user by id");
         }
+
+        Account account = _accountDao.findById(user.getAccountId());
+        checkAccess(caller, null, true, account);
 
         // don't allow updating system user
         if (user.getId() == User.UID_SYSTEM) {
