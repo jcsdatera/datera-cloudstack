@@ -9,6 +9,7 @@ import java.util.Map;
 
 public class DateraObject {
 
+    public static final String DEFAULT_CREATE_MODE = "cloudstack";
     public static final String DEFAULT_STORAGE_NAME = "storage-1";
     public static final String DEFAULT_VOLUME_NAME = "volume-1";
     public static final String DEFAULT_ACL = "deny_all";
@@ -220,6 +221,7 @@ public class DateraObject {
             this.storageInstances = new HashMap<String, StorageInstance>();
             this.storageInstances.put(DEFAULT_STORAGE_NAME, storageInstance);
             this.accessControlMode = DEFAULT_ACL;
+            this.createMode = DEFAULT_CREATE_MODE;
         }
 
         public AppInstance(AppState state) {
