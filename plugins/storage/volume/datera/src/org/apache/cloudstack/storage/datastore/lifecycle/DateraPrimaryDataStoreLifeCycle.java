@@ -78,12 +78,16 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
         Map<String, String> details = (Map<String, String>)dsInfos.get("details");
 
         String storageVip = DateraUtil.getStorageVip(url);
+
         int storagePort = DateraUtil.getStoragePort(url);
         int numReplicas = DateraUtil.getNumReplicas(url);
+        String volPlacement = DateraUtil.getVolPlacement(url);
+        String clusterAdminUsername = DateraUtil.getValue(DateraUtil.CLUSTER_ADMIN_USERNAME, url);
+        String clusterAdminPassword = DateraUtil.getValue(DateraUtil.CLUSTER_ADMIN_PASSWORD, url);
 
         DataCenterVO zone = zoneDao.findById(zoneId);
 
-        String uuid = DateraUtil.PROVIDER_NAME + "_" + zone.getUuid() + "_" + storageVip;
+        String uuid = DateraUtil.PROVIDER_NAME + "_" + zone.getUuid() + "_" + storageVip + "_" + clusterAdminUsername + "_" + numReplicas + "_" + volPlacement;
 
         if (capacityBytes == null || capacityBytes <= 0) {
             throw new IllegalArgumentException("'capacityBytes' must be present and greater than 0.");
@@ -116,9 +120,6 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
 
         details.put(DateraUtil.MANAGEMENT_VIP, managementVip);
         details.put(DateraUtil.MANAGEMENT_PORT, String.valueOf(managementPort));
-
-        String clusterAdminUsername = DateraUtil.getValue(DateraUtil.CLUSTER_ADMIN_USERNAME, url);
-        String clusterAdminPassword = DateraUtil.getValue(DateraUtil.CLUSTER_ADMIN_PASSWORD, url);
 
         details.put(DateraUtil.CLUSTER_ADMIN_USERNAME, clusterAdminUsername);
         details.put(DateraUtil.CLUSTER_ADMIN_PASSWORD, clusterAdminPassword);
@@ -159,6 +160,7 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
         details.put(DateraUtil.CLUSTER_DEFAULT_MAX_IOPS, String.valueOf(lClusterDefaultMaxIops));
 
         details.put(DateraUtil.NUM_REPLICAS, String.valueOf(DateraUtil.getNumReplicas(url)));
+        details.put(DateraUtil.VOL_PLACEMENT, String.valueOf(DateraUtil.getVolPlacement(url)));
 
         return dataStoreHelper.createPrimaryDataStore(parameters);
     }

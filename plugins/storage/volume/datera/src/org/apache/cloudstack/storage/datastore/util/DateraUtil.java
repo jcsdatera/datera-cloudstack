@@ -73,12 +73,15 @@ public class DateraUtil {
     private static final int DEFAULT_STORAGE_PORT = 3260;
     private static final int DEFAULT_NUM_REPLICAS = 3;
 
+    private static final String DEFAULT_VOL_PLACEMENT = "hybrid";
+
     public static final String CLUSTER_ADMIN_USERNAME = "clusterAdminUsername";
     public static final String CLUSTER_ADMIN_PASSWORD = "clusterAdminPassword";
 
     public static final String CLUSTER_DEFAULT_MIN_IOPS = "clusterDefaultMinIops";
     public static final String CLUSTER_DEFAULT_MAX_IOPS = "clusterDefaultMaxIops";
     public static final String NUM_REPLICAS = "numReplicas";
+    public static final String VOL_PLACEMENT = "volPlacement";
 
     public static final String STORAGE_POOL_ID = "DateraStoragePoolId";
     public static final String VOLUME_SIZE = "DateraVolumeSize";
@@ -214,6 +217,15 @@ public class DateraUtil {
 
         return createAppInstance(conn, name, appInstanceEntity);
     }
+
+    public static DateraObject.AppInstance createAppInstance(DateraObject.DateraConnection conn, String name, int size, int totalIops, int replicaCount, String placementMode) throws UnsupportedEncodingException, DateraObject.DateraError {
+
+        DateraObject.AppInstance appInstance = new DateraObject.AppInstance(name, size, totalIops, replicaCount, placementMode);
+        StringEntity appInstanceEntity = new StringEntity(gson.toJson(appInstance));
+
+        return createAppInstance(conn, name, appInstanceEntity);
+    }
+
 
     public static DateraObject.AppInstance cloneAppInstance(DateraObject.DateraConnection conn, String name, String srcCloneName) throws UnsupportedEncodingException, DateraObject.DateraError {
 
@@ -526,6 +538,15 @@ public class DateraUtil {
             return DEFAULT_NUM_REPLICAS;
         }
 
+    }
+
+    public static String getVolPlacement(String url) {
+        String volPlacement = getValue(DateraUtil.VOL_PLACEMENT, url, false);
+        if (volPlacement == null) {
+            return DEFAULT_VOL_PLACEMENT;
+        } else {
+            return volPlacement;
+        }
     }
 
     private static String getVip(String keyToMatch, String url) {
