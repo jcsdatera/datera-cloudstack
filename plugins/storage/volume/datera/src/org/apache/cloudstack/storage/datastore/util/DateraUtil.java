@@ -76,12 +76,15 @@ public class DateraUtil {
     private static final int DEFAULT_STORAGE_PORT = 3260;
     private static final int DEFAULT_NUM_REPLICAS = 3;
 
+    private static final String DEFAULT_VOL_PLACEMENT = "hybrid";
+
     public static final String CLUSTER_ADMIN_USERNAME = "clusterAdminUsername";
     public static final String CLUSTER_ADMIN_PASSWORD = "clusterAdminPassword";
 
     public static final String CLUSTER_DEFAULT_MIN_IOPS = "clusterDefaultMinIops";
     public static final String CLUSTER_DEFAULT_MAX_IOPS = "clusterDefaultMaxIops";
     public static final String NUM_REPLICAS = "numReplicas";
+    public static final String VOL_PLACEMENT = "volPlacement";
 
     public static final String STORAGE_POOL_ID = "DateraStoragePoolId";
     public static final String VOLUME_SIZE = "DateraVolumeSize";
@@ -91,9 +94,9 @@ public class DateraUtil {
 
     public static final int MAX_IOPS = 30000; // max IOPS that can be assigned to a volume
 
-    public static final String INITIATOR_GROUP_PREFIX = "Cloudstack-InitiatorGroup";
-    public static final String INITIATOR_PREFIX = "Cloudstack-Initiator";
-    public static final String APPINSTANCE_PREFIX = "Cloudstack";
+    public static final String INITIATOR_GROUP_PREFIX = "CS-InitiatorGroup";
+    public static final String INITIATOR_PREFIX = "CS-Initiator";
+    public static final String APPINSTANCE_PREFIX = "CS";
 
     public static final int MIN_NUM_REPLICAS = 1;
     public static final int MAX_NUM_REPLICAS = 5;
@@ -243,6 +246,18 @@ public class DateraUtil {
         }
     }
 
+    public static void updateAppInstancePlacement(DateraObject.DateraConnection conn, String appInstanceName, String newPlacementMode) throws UnsupportedEncodingException, DateraObject.DateraError {
+        HttpPut url = new HttpPut(generateApiUrl(
+                "app_instances", appInstanceName,
+                "storage_instances", DateraObject.DEFAULT_STORAGE_NAME,
+                "volumes", DateraObject.DEFAULT_VOLUME_NAME));
+
+        DateraObject.Volume volume = new DateraObject.Volume(newPlacementMode);
+        url.setEntity(new StringEntity(gson.toJson(volume)));
+        executeApiRequest(conn, url);
+
+    }
+
 
 
     private static DateraObject.AppInstance createAppInstance(DateraObject.DateraConnection conn, String name, StringEntity appInstanceEntity) throws DateraObject.DateraError {
@@ -268,6 +283,14 @@ public class DateraUtil {
         return createAppInstance(conn, name, appInstanceEntity);
     }
 
+    public static DateraObject.AppInstance createAppInstance(DateraObject.DateraConnection conn, String name, int size, int totalIops, int replicaCount, String placementMode) throws UnsupportedEncodingException, DateraObject.DateraError {
+
+        DateraObject.AppInstance appInstance = new DateraObject.AppInstance(name, size, totalIops, replicaCount, placementMode);
+        StringEntity appInstanceEntity = new StringEntity(gson.toJson(appInstance));
+
+        return createAppInstance(conn, name, appInstanceEntity);
+    }
+
     public static DateraObject.AppInstance cloneAppInstanceFromVolume(DateraObject.DateraConnection conn, String name, String srcCloneName) throws UnsupportedEncodingException, DateraObject.DateraError {
 
         DateraObject.AppInstance srcAppInstance = getAppInstance(conn, srcCloneName);
@@ -288,6 +311,7 @@ public class DateraUtil {
 
         return getAppInstance(conn, name);
     }
+
 
     public static DateraObject.AppInstance pollAppInstanceAvailable(DateraObject.DateraConnection conn, String appInstanceName) throws DateraObject.DateraError {
 
@@ -690,6 +714,16 @@ public class DateraUtil {
             return Integer.parseInt(value);
         }catch (NumberFormatException ex){
             return DEFAULT_NUM_REPLICAS;
+        }
+
+    }
+
+    public static String getVolPlacement(String url) {
+        String volPlacement = getValue(DateraUtil.VOL_PLACEMENT, url, false);
+        if (volPlacement == null) {
+            return DEFAULT_VOL_PLACEMENT;
+        } else {
+            return volPlacement;
         }
     }
 

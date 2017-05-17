@@ -137,6 +137,9 @@ public class DateraObject {
         @SerializedName("performance_policy")
         private PerformancePolicy performancePolicy;
 
+        @SerializedName("placement_mode")
+        private String placementMode;
+
         @SerializedName("op_state")
         private String opState;
 
@@ -147,8 +150,20 @@ public class DateraObject {
             this.performancePolicy = new PerformancePolicy(totalIops);
         }
 
+        public Volume(int size, int totalIops, int replicaCount, String placementMode) {
+            this.name = DEFAULT_VOLUME_NAME;
+            this.size = size;
+            this.replicaCount = replicaCount;
+            this.performancePolicy = new PerformancePolicy(totalIops);
+            this.placementMode = placementMode;
+        }
+
         public Volume(Integer newSize) {
-            this.size=newSize;
+            this.size = newSize;
+        }
+
+        public Volume(String newPlacementMode) {
+            this.placementMode = newPlacementMode;
         }
 
         public PerformancePolicy getPerformancePolicy() {
@@ -157,6 +172,10 @@ public class DateraObject {
 
         public int getSize() {
             return size;
+        }
+
+        public String getPlacementMode(){
+            return placementMode;
         }
 
         public String getPath(){
@@ -176,6 +195,12 @@ public class DateraObject {
 
         public StorageInstance(int size, int totalIops, int replicaCount) {
             Volume volume = new Volume(size, totalIops, replicaCount);
+            volumes = new HashMap<String, Volume>();
+            volumes.put(DEFAULT_VOLUME_NAME, volume);
+        }
+
+        public StorageInstance(int size, int totalIops, int replicaCount, String placementMode) {
+            Volume volume = new Volume(size, totalIops, replicaCount, placementMode);
             volumes = new HashMap<String, Volume>();
             volumes.put(DEFAULT_VOLUME_NAME, volume);
         }
@@ -214,10 +239,18 @@ public class DateraObject {
         private String adminState;
         private Boolean force;
 
-
         public AppInstance(String name, int size, int totalIops, int replicaCount) {
             this.name = name;
             StorageInstance storageInstance = new StorageInstance(size, totalIops, replicaCount);
+            this.storageInstances = new HashMap<String, StorageInstance>();
+            this.storageInstances.put(DEFAULT_STORAGE_NAME, storageInstance);
+            this.accessControlMode = DEFAULT_ACL;
+            this.createMode = DEFAULT_CREATE_MODE;
+        }
+
+        public AppInstance(String name, int size, int totalIops, int replicaCount, String placementMode) {
+            this.name = name;
+            StorageInstance storageInstance = new StorageInstance(size, totalIops, replicaCount, placementMode);
             this.storageInstances = new HashMap<String, StorageInstance>();
             this.storageInstances.put(DEFAULT_STORAGE_NAME, storageInstance);
             this.accessControlMode = DEFAULT_ACL;

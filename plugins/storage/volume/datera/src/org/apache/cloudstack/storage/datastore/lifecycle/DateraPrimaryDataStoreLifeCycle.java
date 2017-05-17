@@ -64,7 +64,6 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
     @Inject private StorageManager _storageMgr;
     @Inject private StoragePoolAutomation storagePoolAutomation;
 
-    // invoked to add primary storage that is based on the SolidFire plug-in
     @Override
     public DataStore initialize(Map<String, Object> dsInfos) {
 
@@ -79,11 +78,16 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
         Map<String, String> details = (Map<String, String>)dsInfos.get("details");
 
         String storageVip = DateraUtil.getStorageVip(url);
+
         int storagePort = DateraUtil.getStoragePort(url);
+        int numReplicas = DateraUtil.getNumReplicas(url);
+        String volPlacement = DateraUtil.getVolPlacement(url);
+        String clusterAdminUsername = DateraUtil.getValue(DateraUtil.CLUSTER_ADMIN_USERNAME, url);
+        String clusterAdminPassword = DateraUtil.getValue(DateraUtil.CLUSTER_ADMIN_PASSWORD, url);
 
         DataCenterVO zone = zoneDao.findById(zoneId);
 
-        String uuid = DateraUtil.PROVIDER_NAME + "_" + zone.getUuid() + "_" + storageVip;
+        String uuid = DateraUtil.PROVIDER_NAME + "_" + zone.getUuid() + "_" + storageVip + "_" + clusterAdminUsername + "_" + numReplicas + "_" + volPlacement;
 
         if (capacityBytes == null || capacityBytes <= 0) {
             throw new IllegalArgumentException("'capacityBytes' must be present and greater than 0.");
@@ -116,10 +120,6 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
 
         details.put(DateraUtil.MANAGEMENT_VIP, managementVip);
         details.put(DateraUtil.MANAGEMENT_PORT, String.valueOf(managementPort));
-
-        String clusterAdminUsername = DateraUtil.getValue(DateraUtil.CLUSTER_ADMIN_USERNAME, url);
-        String clusterAdminPassword = DateraUtil.getValue(DateraUtil.CLUSTER_ADMIN_PASSWORD, url);
-
         details.put(DateraUtil.CLUSTER_ADMIN_USERNAME, clusterAdminUsername);
         details.put(DateraUtil.CLUSTER_ADMIN_PASSWORD, clusterAdminPassword);
 
@@ -156,19 +156,17 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
                 DateraUtil.CLUSTER_DEFAULT_MAX_IOPS + "'.");
         }
 
-        int numReplicas = DateraUtil.getNumReplicas(url);
-
         if (numReplicas < DateraUtil.MIN_NUM_REPLICAS || numReplicas > DateraUtil.MAX_NUM_REPLICAS) {
              throw new CloudRuntimeException("The parameter '" + DateraUtil.NUM_REPLICAS + "' must be between  " +
                 DateraUtil.CLUSTER_DEFAULT_MAX_IOPS + "' and " + DateraUtil.MAX_NUM_REPLICAS);
         }
 
-        details.put(DateraUtil.NUM_REPLICAS, String.valueOf(DateraUtil.getNumReplicas(url)));
-
         details.put(DateraUtil.CLUSTER_DEFAULT_MIN_IOPS, String.valueOf(lClusterDefaultMinIops));
         details.put(DateraUtil.CLUSTER_DEFAULT_MAX_IOPS, String.valueOf(lClusterDefaultMaxIops));
 
-        // this adds a row in the cloud.storage_pool table for this Datera cluster
+        details.put(DateraUtil.NUM_REPLICAS, String.valueOf(DateraUtil.getNumReplicas(url)));
+        details.put(DateraUtil.VOL_PLACEMENT, String.valueOf(DateraUtil.getVolPlacement(url)));
+
         return dataStoreHelper.createPrimaryDataStore(parameters);
     }
 
@@ -179,7 +177,8 @@ public class DateraPrimaryDataStoreLifeCycle implements PrimaryDataStoreLifeCycl
 
     @Override
     public boolean attachCluster(DataStore store, ClusterScope scope) {
-        return true; // should be ignored for zone-wide-only plug-ins
+        throw new UnsupportedOperationException("Only Zone-wide scope is supported with the Datera Storage driver");
+        //return true; // should be ignored for zone-wide-only plug-ins
     }
 
     @Override

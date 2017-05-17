@@ -435,6 +435,20 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
 
     }
 
+    /**
+    * Return the default volume placement to use (configured at storage addition time)
+    * @param storagePoolId the primary storage
+    * @return volume placement string
+    */
+   private String getVolPlacement(long storagePoolId) {
+       StoragePoolDetailVO storagePoolDetail = _storagePoolDetailsDao.findDetail(storagePoolId, DateraUtil.VOL_PLACEMENT);
+
+       String clusterDefaultVolPlacement = storagePoolDetail.getValue();
+
+       return clusterDefaultVolPlacement;
+
+   }
+
     @Override
     public long getUsedBytes(StoragePool storagePool) {
         return getUsedBytes(storagePool, Long.MIN_VALUE);
@@ -734,12 +748,15 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         }
 
         int replicas = getNumReplicas(storagePoolId);
+        String volumePlacement = getVolPlacement(storagePoolId);
 
         long volumeSizeBytes = getDataObjectSizeIncludingHypervisorSnapshotReserve(volumeInfo, _storagePoolDao.findById(storagePoolId));
         int volumeSizeGb = DateraUtil.bytesToGb(volumeSizeBytes);
-
-        return DateraUtil.createAppInstance(conn, getAppInstanceName(volumeInfo), volumeSizeGb, maxIops, replicas);
-
+        if (volumePlacement == null) {
+            return DateraUtil.createAppInstance(conn, getAppInstanceName(volumeInfo), volumeSizeGb, maxIops, replicas);
+        } else {
+            return DateraUtil.createAppInstance(conn, getAppInstanceName(volumeInfo), volumeSizeGb, maxIops, replicas, volumePlacement);
+        }
     }
 
     /**
@@ -802,15 +819,23 @@ public class DateraPrimaryDataStoreDriver implements PrimaryDataStoreDriver {
         //Clone the app Instance
         appInstance = DateraUtil.cloneAppInstanceFromVolume(conn, clonedAppInstanceName, baseAppInstanceName);
 
+        if ( dataType == DataObjectType.TEMPLATE ) {
+            // Only update volume parameters if clone from cached template
+            // Update maxIops
+            if (volumeInfo.getMaxIops() != null) {
 
-        if (volumeInfo.getMaxIops() != null) {
+                int totalIops = Math.min(DateraUtil.MAX_IOPS, Ints.checkedCast(volumeInfo.getMaxIops()));
 
-            int totalIops = Math.min(DateraUtil.MAX_IOPS, Ints.checkedCast(volumeInfo.getMaxIops()));
-
-            DateraUtil.updateAppInstanceIops(conn, clonedAppInstanceName, totalIops);
+                DateraUtil.updateAppInstanceIops(conn, clonedAppInstanceName, totalIops);
+                appInstance = DateraUtil.getAppInstance(conn, clonedAppInstanceName);
+            }
+            // Update placementMode
+            String newPlacementMode = getVolPlacement(storagePoolId);
+            if (newPlacementMode != null) {
+                DateraUtil.updateAppInstancePlacement(conn, clonedAppInstanceName, newPlacementMode);
+            }
             appInstance = DateraUtil.getAppInstance(conn, clonedAppInstanceName);
         }
-
         if (appInstance == null){
             throw new CloudRuntimeException("Unable to create an app instance from snapshot " + volumeInfo.getId() + " type " + dataType);
         }
