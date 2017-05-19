@@ -96,6 +96,7 @@ management, and intelligence in CloudStack.
 %package common
 Summary: Apache CloudStack common files and scripts
 Requires: python
+Requires: python-argparse
 Obsoletes: cloud-test < 4.1.0 
 Obsoletes: cloud-scripts < 4.1.0
 Obsoletes: cloud-utils < 4.1.0
@@ -438,9 +439,9 @@ if [ "$1" == "1" ] ; then
     /sbin/chkconfig --level 345 cloudstack-management on > /dev/null 2>&1 || true
 fi
 
-grep "db.cloud.driver=jdbc:mysql" /etc/cloudstack/management/db.properties > /dev/null|| echo "db.cloud.driver=jdbc:mysql" >> /etc/cloudstack/management/db.properties
-grep "db.usage.driver=jdbc:mysql" /etc/cloudstack/management/db.properties > /dev/null|| echo "db.usage.driver=jdbc:mysql" >> /etc/cloudstack/management/db.properties
-grep "db.simulator.driver=jdbc:mysql" /etc/cloudstack/management/db.properties > /dev/null|| echo "db.simulator.driver=jdbc:mysql" >> /etc/cloudstack/management/db.properties
+grep -s -q "db.cloud.driver=jdbc:mysql" "%{_sysconfdir}/%{name}/management/db.properties" || sed -i -e "\$adb.cloud.driver=jdbc:mysql" "%{_sysconfdir}/%{name}/management/db.properties"
+grep -s -q "db.usage.driver=jdbc:mysql" "%{_sysconfdir}/%{name}/management/db.properties" || sed -i -e "\$adb.usage.driver=jdbc:mysql" db.properties
+grep -s -q "db.simulator.driver=jdbc:mysql" "%{_sysconfdir}/%{name}/management/db.properties" || sed -i -e "\$adb.simulator.driver=jdbc:mysql" "%{_sysconfdir}/%{name}/management/db.properties"
 
 if [ ! -f %{_datadir}/cloudstack-common/scripts/vm/hypervisor/xenserver/vhd-util ] ; then
     echo Please download vhd-util from http://download.cloud.com.s3.amazonaws.com/tools/vhd-util and put it in 
@@ -560,6 +561,10 @@ fi
 if [ -f "%{_sysconfdir}/%{name}/management/key" ]; then
     echo Replacing key with management server key
     rm -f %{_sysconfdir}/%{name}/usage/key
+    ln -s %{_sysconfdir}/%{name}/management/key %{_sysconfdir}/%{name}/usage/key
+fi
+
+if [ ! -f "%{_sysconfdir}/%{name}/usage/key" ]; then
     ln -s %{_sysconfdir}/%{name}/management/key %{_sysconfdir}/%{name}/usage/key
 fi
 

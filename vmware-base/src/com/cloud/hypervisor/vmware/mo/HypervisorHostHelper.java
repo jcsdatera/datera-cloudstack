@@ -77,6 +77,7 @@ import com.vmware.vim25.VMwareDVSPvlanConfigSpec;
 import com.vmware.vim25.VMwareDVSPvlanMapEntry;
 import com.vmware.vim25.VirtualBusLogicController;
 import com.vmware.vim25.VirtualController;
+import com.vmware.vim25.VirtualDevice;
 import com.vmware.vim25.VirtualDeviceConfigSpec;
 import com.vmware.vim25.VirtualDeviceConfigSpecOperation;
 import com.vmware.vim25.VirtualIDEController;
@@ -1081,8 +1082,11 @@ public class HypervisorHostHelper {
             }
         } else {
             if (!hostMo.hasPortGroup(vSwitch, networkName)) {
-                hostMo.createPortGroup(vSwitch, networkName, vid, secPolicy, shapingPolicy);
-                bWaitPortGroupReady = true;
+                hostMo.createPortGroup(vSwitch, networkName, vid, secPolicy, shapingPolicy, timeOutMs);
+                // Setting flag "bWaitPortGroupReady" to false.
+                // This flag indicates whether we need to wait for portgroup on vCenter.
+                // Above createPortGroup() method itself ensures creation of portgroup as well as wait for portgroup.
+                bWaitPortGroupReady = false;
             } else {
                 HostPortGroupSpec spec = hostMo.getPortGroupSpec(networkName);
                 if (!isSpecMatch(spec, vid, shapingPolicy)) {
@@ -1289,6 +1293,18 @@ public class HypervisorHostHelper {
             vmConfig.getDeviceChange().add(scsiControllerSpec);
             busNum++;
             }
+        }
+
+        if (guestOsIdentifier.startsWith("darwin")) { //Mac OS
+            s_logger.debug("Add USB Controller device for blank Mac OS VM " + vmName);
+
+            //For Mac OS X systems, the EHCI+UHCI controller is enabled by default and is required for USB mouse and keyboard access.
+            VirtualDevice usbControllerDevice = VmwareHelper.prepareUSBControllerDevice();
+            VirtualDeviceConfigSpec usbControllerSpec = new VirtualDeviceConfigSpec();
+            usbControllerSpec.setDevice(usbControllerDevice);
+            usbControllerSpec.setOperation(VirtualDeviceConfigSpecOperation.ADD);
+
+            vmConfig.getDeviceChange().add(usbControllerSpec);
         }
 
         VirtualMachineFileInfo fileInfo = new VirtualMachineFileInfo();

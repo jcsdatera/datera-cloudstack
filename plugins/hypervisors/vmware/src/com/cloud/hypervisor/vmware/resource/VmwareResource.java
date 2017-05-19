@@ -24,6 +24,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.channels.SocketChannel;
 import java.rmi.RemoteException;
+import org.joda.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -79,6 +80,7 @@ import com.vmware.vim25.VirtualDevice;
 import com.vmware.vim25.VirtualDeviceBackingInfo;
 import com.vmware.vim25.VirtualDeviceConfigSpec;
 import com.vmware.vim25.VirtualDeviceConfigSpecOperation;
+import com.vmware.vim25.VirtualUSBController;
 import com.vmware.vim25.VirtualDisk;
 import com.vmware.vim25.VirtualDiskFlatVer2BackingInfo;
 import com.vmware.vim25.VirtualEthernetCard;
@@ -216,6 +218,7 @@ import com.cloud.agent.api.to.NicTO;
 import com.cloud.agent.api.to.StorageFilerTO;
 import com.cloud.agent.api.to.VirtualMachineTO;
 import com.cloud.agent.api.to.VolumeTO;
+import com.cloud.agent.resource.virtualnetwork.VRScripts;
 import com.cloud.agent.resource.virtualnetwork.VirtualRouterDeployer;
 import com.cloud.agent.resource.virtualnetwork.VirtualRoutingResource;
 import com.cloud.dc.DataCenter.NetworkType;
@@ -831,18 +834,19 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
         VmwareManager mgr = getServiceContext().getStockObject(VmwareManager.CONTEXT_STOCK_NAME);
 
         s_logger.info("findRouterEthDeviceIndex. mac: " + mac);
-
-        // TODO : this is a temporary very inefficient solution, will refactor it later
-        Pair<Boolean, String> result = SshHelper.sshExecute(routerIp, DefaultDomRSshPort, "root", mgr.getSystemVMKeyFile(), null, "ls /proc/sys/net/ipv4/conf");
+        ArrayList<String> skipInterfaces = new ArrayList<String>(Arrays.asList("all", "default", "lo"));
 
         // when we dynamically plug in a new NIC into virtual router, it may take time to show up in guest OS
         // we use a waiting loop here as a workaround to synchronize activities in systems
         long startTick = System.currentTimeMillis();
         while (System.currentTimeMillis() - startTick < 15000) {
+
+            // TODO : this is a temporary very inefficient solution, will refactor it later
+            Pair<Boolean, String> result = SshHelper.sshExecute(routerIp, DefaultDomRSshPort, "root", mgr.getSystemVMKeyFile(), null, "ls /proc/sys/net/ipv4/conf");
             if (result.first()) {
                 String[] tokens = result.second().split("\\s+");
                 for (String token : tokens) {
-                    if (!("all".equalsIgnoreCase(token) || "default".equalsIgnoreCase(token) || "lo".equalsIgnoreCase(token))) {
+                    if (!(skipInterfaces.contains(token))) {
                         String cmd = String.format("ip address show %s | grep link/ether | sed -e 's/^[ \t]*//' | cut -d' ' -f2", token);
 
                         if (s_logger.isDebugEnabled())
@@ -853,8 +857,11 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
                         if (s_logger.isDebugEnabled())
                             s_logger.debug("result: " + result2.first() + ", output: " + result2.second());
 
-                        if (result2.first() && result2.second().trim().equalsIgnoreCase(mac.trim()))
+                        if (result2.first() && result2.second().trim().equalsIgnoreCase(mac.trim())) {
                             return Integer.parseInt(token.substring(3));
+                        } else {
+                            skipInterfaces.add(token);
+                        }
                     }
                 }
             }
@@ -1118,11 +1125,9 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
          *  so we assume that it's VLAN for now
          */
         if (VirtualSwitchType.StandardVirtualSwitch == vSwitchType) {
-            synchronized (vmMo.getRunningHost().getMor().getValue().intern()) {
-                networkInfo =
-                        HypervisorHostHelper.prepareNetwork(_publicTrafficInfo.getVirtualSwitchName(), "cloud.public", vmMo.getRunningHost(), vlanId, null, null,
-                                _opsTimeout, true, BroadcastDomainType.Vlan, null);
-            }
+            networkInfo = HypervisorHostHelper.prepareNetwork(_publicTrafficInfo.getVirtualSwitchName(),
+                    "cloud.public", vmMo.getRunningHost(), vlanId, null, null,
+                    _opsTimeout, true, BroadcastDomainType.Vlan, null);
         } else {
             networkInfo =
                     HypervisorHostHelper.prepareNetwork(_publicTrafficInfo.getVirtualSwitchName(), "cloud.public", vmMo.getRunningHost(), vlanId, null, null, null,
@@ -1265,11 +1270,11 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
 
     @Override
     public ExecutionResult executeInVR(String routerIP, String script, String args) {
-        return executeInVR(routerIP, script, args, 120);
+        return executeInVR(routerIP, script, args, VRScripts.VR_SCRIPT_EXEC_TIMEOUT);
     }
 
     @Override
-    public ExecutionResult executeInVR(String routerIP, String script, String args, int timeout) {
+    public ExecutionResult executeInVR(String routerIP, String script, String args, Duration timeout) {
         Pair<Boolean, String> result;
 
         //TODO: Password should be masked, cannot output to log directly
@@ -1280,7 +1285,7 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
         try {
             VmwareManager mgr = getServiceContext().getStockObject(VmwareManager.CONTEXT_STOCK_NAME);
             result = SshHelper.sshExecute(routerIP, DefaultDomRSshPort, "root", mgr.getSystemVMKeyFile(), null, "/opt/cloud/bin/" + script + " " + args,
-                    60000, 60000, timeout * 1000);
+                    VRScripts.CONNECTION_TIMEOUT, VRScripts.CONNECTION_TIMEOUT, timeout);
         } catch (Exception e) {
             String msg = "Command failed due to " + VmwareHelper.getExceptionMessage(e);
             s_logger.error(msg);
@@ -1863,6 +1868,29 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
                         ideUnitNumber++;
                     else
                         scsiUnitNumber++;
+                }
+            }
+
+            //
+            // Setup USB devices
+            //
+            if (guestOsId.startsWith("darwin")) { //Mac OS
+                VirtualDevice[] devices = vmMo.getMatchedDevices(new Class<?>[] {VirtualUSBController.class});
+                if (devices.length == 0) {
+                    s_logger.debug("No USB Controller device on VM Start. Add USB Controller device for Mac OS VM " + vmInternalCSName);
+
+                    //For Mac OS X systems, the EHCI+UHCI controller is enabled by default and is required for USB mouse and keyboard access.
+                    VirtualDevice usbControllerDevice = VmwareHelper.prepareUSBControllerDevice();
+                    deviceConfigSpecArray[i] = new VirtualDeviceConfigSpec();
+                    deviceConfigSpecArray[i].setDevice(usbControllerDevice);
+                    deviceConfigSpecArray[i].setOperation(VirtualDeviceConfigSpecOperation.ADD);
+
+                    if (s_logger.isDebugEnabled())
+                        s_logger.debug("Prepare USB controller at new device " + _gson.toJson(deviceConfigSpecArray[i]));
+
+                    i++;
+                } else {
+                    s_logger.debug("USB Controller device exists on VM Start for Mac OS VM " + vmInternalCSName);
                 }
             }
 
@@ -2822,11 +2850,9 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
         s_logger.info("Prepare network on " + switchType + " " + switchName + " with name prefix: " + namePrefix);
 
         if (VirtualSwitchType.StandardVirtualSwitch == switchType) {
-            synchronized(hostMo.getMor().getValue().intern()) {
-                networkInfo = HypervisorHostHelper.prepareNetwork(switchName, namePrefix, hostMo, getVlanInfo(nicTo, vlanToken), nicTo.getNetworkRateMbps(),
-                        nicTo.getNetworkRateMulticastMbps(), _opsTimeout,
-                        !namePrefix.startsWith("cloud.private"), nicTo.getBroadcastType(), nicTo.getUuid());
-            }
+            networkInfo = HypervisorHostHelper.prepareNetwork(switchName, namePrefix, hostMo,
+                    getVlanInfo(nicTo, vlanToken), nicTo.getNetworkRateMbps(), nicTo.getNetworkRateMulticastMbps(),
+                    _opsTimeout, !namePrefix.startsWith("cloud.private"), nicTo.getBroadcastType(), nicTo.getUuid());
         }
         else {
             String vlanId = getVlanInfo(nicTo, vlanToken);
@@ -5475,7 +5501,7 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
             if (s_logger.isTraceEnabled()) {
                 s_logger.trace("Recycling threadlocal context to pool");
             }
-            context.getPool().returnContext(context);
+            context.getPool().registerContext(context);
         }
     }
 
@@ -5539,17 +5565,8 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
             VmwareHypervisorHost hyperHost = getHyperHost(context, null);
             VolumeTO vol = cmd.getVolume();
 
-            ManagedObjectReference morDs = HypervisorHostHelper.findDatastoreWithBackwardsCompatibility(hyperHost, vol.getPoolUuid());
-            if (morDs == null) {
-                String msg = "Unable to find datastore based on volume mount point " + vol.getMountPoint();
-                s_logger.error(msg);
-                throw new Exception(msg);
-            }
+            VirtualMachineMO vmMo = findVmOnDatacenter(context, hyperHost, vol);
 
-            ManagedObjectReference morCluster = hyperHost.getHyperHostCluster();
-            ClusterMO clusterMo = new ClusterMO(context, morCluster);
-
-            VirtualMachineMO vmMo = clusterMo.findVmOnHyperHost(vol.getPath());
             if (vmMo != null && vmMo.isTemplate()) {
                 if (s_logger.isInfoEnabled()) {
                     s_logger.info("Destroy template volume " + vol.getPath());
@@ -5572,6 +5589,26 @@ public class VmwareResource implements StoragePoolResource, ServerResource, Vmwa
             s_logger.error(msg, e);
             return new Answer(cmd, false, msg);
         }
+    }
+
+    /**
+     * Use data center to look for vm, instead of randomly picking up a cluster<br/>
+     * (in multiple cluster environments vm could not be found if wrong cluster was chosen)
+     * @param context vmware context
+     * @param hyperHost vmware hv host
+     * @param vol volume
+     * @return a virtualmachinemo if could be found on datacenter.
+     * @throws Exception if there is an error while finding vm
+     * @throws CloudRuntimeException if datacenter cannot be found
+     */
+    protected VirtualMachineMO findVmOnDatacenter(VmwareContext context, VmwareHypervisorHost hyperHost, VolumeTO vol) throws Exception {
+        DatacenterMO dcMo = new DatacenterMO(context, hyperHost.getHyperHostDatacenter());
+        if (dcMo.getMor() == null) {
+            String msg = "Unable to find VMware DC";
+            s_logger.error(msg);
+            throw new CloudRuntimeException(msg);
+        }
+        return dcMo.findVm(vol.getPath());
     }
 
     private String getAbsoluteVmdkFile(VirtualDisk disk) {

@@ -26,7 +26,7 @@
   <parent>
     <groupId>org.apache.cloudstack</groupId>
     <artifactId>cloudstack</artifactId>
-    <version>4.9.0</version>
+    <version>4.9.2.0</version>
     <relativePath>../pom.xml</relativePath>
   </parent>
   <dependencies>
@@ -106,7 +106,7 @@
     </dependency>
     <dependency>
       <groupId>javax.servlet</groupId>
-      <artifactId>servlet-api</artifactId>
+      <artifactId>javax.servlet-api</artifactId>
       <scope>provided</scope>
     </dependency>
     <!-- Test dependency in mysql for db tests -->

@@ -1759,12 +1759,14 @@ public class UserVmManagerImpl extends ManagerBase implements UserVmManager, Vir
                 } finally {
                     if (!success) {
                         _itMgr.upgradeVmDb(vmId, currentServiceOffering.getId()); // rollback
-                        if (newServiceOffering.isDynamic()) {
-                            removeCustomOfferingDetails(vmId);
-                        }
+
                         // Decrement CPU and Memory count accordingly.
                         if (newCpu > currentCpu) {
                             _resourceLimitMgr.decrementResourceCount(caller.getAccountId(), ResourceType.cpu, new Long(newCpu - currentCpu));
+                        }
+                        //restoring old service offering will take care of removing new SO.
+                        if(currentServiceOffering.isDynamic()){
+                            saveCustomOfferingDetails(vmId, currentServiceOffering);
                         }
 
                         if (memoryDiff > 0) {
@@ -3938,7 +3940,12 @@ public class UserVmManagerImpl extends ManagerBase implements UserVmManager, Vir
         boolean status = false;
         try {
             VirtualMachineEntity vmEntity = _orchSrvc.getVirtualMachine(vm.getUuid());
-            status = vmEntity.stop(Long.toString(userId));
+
+            if(forced) {
+                status = vmEntity.stopForced(Long.toString(userId));
+            } else {
+                status = vmEntity.stop(Long.toString(userId));
+            }
             if (status) {
                return _vmDao.findById(vmId);
             } else {

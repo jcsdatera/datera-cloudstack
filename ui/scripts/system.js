@@ -2585,6 +2585,11 @@
                                                 label: 'label.destroy.router',
                                                 messages: {
                                                     confirm: function (args) {
+                                                        if (args && args.context && args.context.routers[0]) {
+                                                            if (args.context.routers[0].state == 'Running') {
+                                                                return dictionary['message.action.stop.router'] + ' ' + dictionary['message.confirm.destroy.router'];
+                                                            }
+                                                        }
                                                         return 'message.confirm.destroy.router';
                                                     },
                                                     notification: function (args) {
@@ -3752,6 +3757,11 @@
                                                 label: 'label.destroy.router',
                                                 messages: {
                                                     confirm: function (args) {
+                                                        if (args && args.context && args.context.routers[0]) {
+                                                            if (args.context.routers[0].state == 'Running') {
+                                                                return dictionary['message.action.stop.router'] + ' ' + dictionary['message.confirm.destroy.router'];
+                                                            }
+                                                        }
                                                         return 'message.confirm.destroy.router';
                                                     },
                                                     notification: function (args) {
@@ -6674,6 +6684,11 @@
                                                 label: 'label.destroy.router',
                                                 messages: {
                                                     confirm: function (args) {
+                                                        if (args && args.context && args.context.routers[0]) {
+                                                            if (args.context.routers[0].state == 'Running') {
+                                                                return dictionary['message.action.stop.router'] + ' ' + dictionary['message.confirm.destroy.router'];
+                                                            }
+                                                        }
                                                         return 'message.confirm.destroy.router';
                                                     },
                                                     notification: function (args) {
@@ -9563,6 +9578,9 @@
                                     var currentPage = 1;
                                     var returnedHostCount = 0;
 
+                                    var returnedHostCountForXenServer700 = 0;  //'XenServer 7.0.0'
+                                    var returnedHostCpusocketsSumForXenServer700 = 0;
+
                                     var returnedHostCountForXenServer650 = 0;  //'XenServer 6.5.0'
                                     var returnedHostCpusocketsSumForXenServer650 = 0;
 
@@ -9591,7 +9609,12 @@
 
                                                 var items = json.listhostsresponse.host;
                                                 for (var i = 0; i < items.length; i++) {
-                                                    if (items[i].hypervisorversion == "6.5.0") {
+                                                    if (items[i].hypervisorversion == "7.0.0") {
+                                                        returnedHostCountForXenServer700 ++;
+                                                        if (items[i].cpusockets != undefined && isNaN(items[i].cpusockets) == false) {
+                                                            returnedHostCpusocketsSumForXenServer700 += items[i].cpusockets;
+                                                        }
+													} else if (items[i].hypervisorversion == "6.5.0") {
                                                         returnedHostCountForXenServer650 ++;
                                                         if (items[i].cpusockets != undefined && isNaN(items[i].cpusockets) == false) {
                                                             returnedHostCpusocketsSumForXenServer650 += items[i].cpusockets;
@@ -9615,6 +9638,12 @@
                                     }
 
                                     callListHostsWithPage();
+
+                                    array1.push({
+                                        hypervisor: 'XenServer 7.0.0',
+                                        hosts: returnedHostCountForXenServer700,
+                                        sockets: returnedHostCpusocketsSumForXenServer700
+                                    });
 
                                     array1.push({
                                         hypervisor: 'XenServer 6.5.0',
@@ -9915,6 +9944,11 @@
                                         label: 'label.destroy.router',
                                         messages: {
                                             confirm: function (args) {
+                                                if (args && args.context && args.context.routers[0]) {
+                                                    if (args.context.routers[0].state == 'Running') {
+                                                        return dictionary['message.action.stop.router'] + ' ' + dictionary['message.confirm.destroy.router'];
+                                                    }
+                                                }
                                                 return 'message.confirm.destroy.router';
                                             },
                                             notification: function (args) {
@@ -16814,10 +16848,21 @@
                                                 required: false
                                             },
                                         },
+                                        reenterpassword: {
+                                            label: 'label.outofbandmanagement.reenterpassword',
+                                            isPassword: true,
+                                            validation: {
+                                                required: false
+                                            }
+                                        },
                                     }
                                 },
                                 action: function (args) {
                                     var data = args.data;
+                                    if (data.password != data.reenterpassword) {
+                                        args.response.error("Passwords do not match");
+                                        return;
+                                    }
                                     data.hostid = args.context.hosts[0].id;
                                     $.ajax({
                                         url: createURL('changeOutOfBandManagementPassword'),
@@ -21554,8 +21599,9 @@
             }
 
             allowedActions.push("restart");
-
+            allowedActions.push("remove");
             allowedActions.push("viewConsole");
+
             if (isAdmin())
             allowedActions.push("migrate");
         } else if (jsonObj.state == 'Stopped') {

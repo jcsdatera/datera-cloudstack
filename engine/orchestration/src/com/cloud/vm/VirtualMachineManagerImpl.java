@@ -977,6 +977,7 @@ public class VirtualMachineManagerImpl extends ManagerBase implements VirtualMac
                     _uservmDetailsDao.addDetail(vm.getId(), "cpuOvercommitRatio", cluster_detail_cpu.getValue(), true);
                     _uservmDetailsDao.addDetail(vm.getId(), "memoryOvercommitRatio", cluster_detail_ram.getValue(), true);
                 }
+
                 vmProfile.setCpuOvercommitRatio(Float.parseFloat(cluster_detail_cpu.getValue()));
                 vmProfile.setMemoryOvercommitRatio(Float.parseFloat(cluster_detail_ram.getValue()));
                 StartAnswer startAnswer = null;
@@ -993,7 +994,7 @@ public class VirtualMachineManagerImpl extends ManagerBase implements VirtualMac
                     if (s_logger.isDebugEnabled()) {
                         s_logger.debug("VM is being created in podId: " + vm.getPodIdToDeployIn());
                     }
-                    _networkMgr.prepare(vmProfile, dest, ctx);
+                    _networkMgr.prepare(vmProfile, new DeployDestination(dest.getDataCenter(), dest.getPod(), null, null), ctx);
                     if (vm.getHypervisorType() != HypervisorType.BareMetal) {
                         volumeMgr.prepare(vmProfile, dest);
                     }
@@ -1234,6 +1235,18 @@ public class VirtualMachineManagerImpl extends ManagerBase implements VirtualMac
     public void stop(final String vmUuid) throws ResourceUnavailableException {
         try {
             advanceStop(vmUuid, false);
+        } catch (final OperationTimedoutException e) {
+            throw new AgentUnavailableException("Unable to stop vm because the operation to stop timed out", e.getAgentId(), e);
+        } catch (final ConcurrentOperationException e) {
+            throw new CloudRuntimeException("Unable to stop vm because of a concurrent operation", e);
+        }
+
+    }
+
+    @Override
+    public void stopForced(String vmUuid) throws ResourceUnavailableException {
+        try {
+            advanceStop(vmUuid, true);
         } catch (final OperationTimedoutException e) {
             throw new AgentUnavailableException("Unable to stop vm because the operation to stop timed out", e.getAgentId(), e);
         } catch (final ConcurrentOperationException e) {
